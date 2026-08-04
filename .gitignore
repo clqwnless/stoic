@@ -1,0 +1,25 @@
+# Python
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+
+# Build output
+
+build/
+dist/
+
+
+# Compiled binaries
+
+*.exe
+*.dll
+
+
+# Logs
+
+*.log
+logs/
+
