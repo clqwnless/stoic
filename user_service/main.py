@@ -12,8 +12,22 @@ import servicemanager;
 import ctypes;
 import time;
 
+import traceback;
+import sys;
+import threading;
+import faulthandler;
+
+
 from user_service.config import *;
 
+
+# i hate debugging this service so i decided to create a except hook
+
+def exception_hook(exc_type, exc_value, exc_tb):
+    log("".join(traceback.format_exception(exc_type, exc_value, exc_tb)));
+
+def thread_hook(args):
+    log("".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)));
 
 def log(msg):
     try:
@@ -183,11 +197,14 @@ class StoicGuardian(win32serviceutil.ServiceFramework):
         win32event.SetEvent(self.stop_event)
 
     def SvcDoRun(self):
+        '''
         servicemanager.LogMsg(
             servicemanager.EVENTLOG_INFORMATION_TYPE,
             servicemanager.PYS_SERVICE_STARTED,
             (self._svc_name_,'')
         )
+        '''
+        # disabling event viewer logs ; if the event viewer service is disabled, this service won't be running
         
         while True:
             
@@ -203,6 +220,12 @@ class StoicGuardian(win32serviceutil.ServiceFramework):
 
 
 if __name__ == "__main__":
+    # capturing errors so that debugging is not hell
+
+    sys.excepthook       = exception_hook;
+    threading.excepthook = thread_hook;
+    faulthandler.enable(open(LOG_PATH, "a", encoding="utf-8"));
+    
     log("start");
     
     servicemanager.Initialize();
