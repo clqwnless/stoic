@@ -19,7 +19,7 @@ menu = """
 # functions
 
 def generate_pass():
-    return secrets.token_hex(PASS_LENGTH / 2);
+    return secrets.token_hex(int(PASS_LENGTH / 2));
 
 def change_pass(user_name, password):
     args = [

@@ -184,7 +184,7 @@ def gen_event(event_type, mode_index=None, task=None, cause=None):
     
     # adding cause
     
-    if (event_type in ["stop", "block_finished"]):
+    if (event_type in ["block_finished"]):
         event["cause"] = cause;
     
     return event;
@@ -236,18 +236,6 @@ def plan_next_block(mode_index):
 
     # возвращают по сути True || False по сути cont если cont=False то return иначе продолжается execute_page
 
-def stop_execute():
-    cause = input("cause:\n");
-    if (cause in ["x", ""]):
-        return True;
-    
-    event = gen_event(event_type="stop", cause=cause);
-    add_event(event);
-    
-    print("stopped\n");
-    pause();
-    
-    return False;
 
 def finish_execute():
     cause = input("cause:\n");
@@ -296,7 +284,8 @@ def sleep_control():
             print(f"  end_time     = {end_time[0]}:{end_time[1]}\n");
             pause();
             return False;
-        return True;
+    
+    return True;
 
 def on_exit_execute_page(start_time, active_block):
     worked_seconds = get_worked_seconds(start_time, active_block);
@@ -388,14 +377,12 @@ def plan_page():
 def execute_page():
     # checling if there is an active schedule now
     
+
     start_time   = get_current_time();
     active_block = find_active_block(local["events"]);
 
     if (not active_block_checker()): return;
     if (not sleep_control()):        return;
-
-    
-    
     
     allowed_proc = get_allowed_proc(active_block);
     
@@ -455,7 +442,7 @@ def view_history_page():
         time_str = unix_to_localstr(event["time"]);
         
         cause = f"cause={event["cause"]} " if "cause" in event else "";
-        task  = f"task={event["task"]} "  if "task"  in event else "";
+        task  = f"task={event["task"]} "   if "task"  in event else "";
         
         #event_render = event["event"];
         
@@ -465,10 +452,6 @@ def view_history_page():
             event_render = f"{BRIGHT_RED}{event_type}{RESET}";
         elif (event_type == "block_finished"):
             event_render = f"{BRIGHT_MAGENTA}{event_type}{RESET}";
-        elif (event_type == "block_resumed"):
-            event_render = f"{CYAN}{event_type}{RESET}";
-        elif (event_type == "stop"):
-            event_render = f"{MAGENTA}{event_type}{RESET}";
         
         print(f" - {BRIGHT_GREEN}[{time_str}]{RESET} {event_render} {BRIGHT_YELLOW}{cause}{RESET}{BRIGHT_WHITE}{task}{RESET}");
     
@@ -710,7 +693,6 @@ def main():
             # after exit from executer
             
             wd_whitelist_enforcer(allowed_proc=[]);
-            
             current_state = get_current_state();
             
             if (current_state == "stopped"):
@@ -755,32 +737,6 @@ def wd_recorder():
 
     recorder.start();
 
-# guardian
-
-def run_guardian():
-    #creationflags = (
-    #    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
-    #)
-    
-    root_pid = str(os.getpid());
-    
-    #if (IS_COMPILED):
-    #    args = [GUARDIAN_PATH, root_pid];
-    #else:
-    #    args = [PYTHONW_PATH, "-m", "user.guardian", root_pid];
-    
-    args = [PYTHONW_PATH, "-m", "user.guardian", root_pid];
-    
-    proc = subprocess.Popen(
-        args,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        #creationflags=creationflags
-    );
-
-    return proc;
-
 
 
 
@@ -791,15 +747,10 @@ if __name__ == "__main__":
     if (os.path.exists(EXTENSIONS_JSON)):
         extensions = read_json(EXTENSIONS_JSON);
 
-
     disable_close_button();
     disable_ctrl_c();
 
     os.chdir(ROOT_PATH);
-    
-    #run_guardian();
-    
-
     
     main();
 
