@@ -1,0 +1,7 @@
+cryptography
+dropbox
+pillow
+psutil
+pyside6
+requests
+pywin32

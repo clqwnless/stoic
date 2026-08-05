@@ -1,6 +1,8 @@
 import json;
 import signal;
-
+import functools;
+import traceback;
+import time;
 
 # json api
 
@@ -56,4 +58,17 @@ def find_task_by_timestamp(status, timestamp):
 
 def disable_ctrl_c():
     signal.signal(signal.SIGINT, signal.SIG_IGN);
+
+
+def restart_func_on_error(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        while True:
+            try:
+                return func(*args, **kwargs);
+            except Exception as e:
+                print(f"err: func name: {func.__name__}: {e}");
+                traceback.print_exc();
+    
+    return wrapper;
 

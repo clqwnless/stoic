@@ -5,7 +5,8 @@ from shared.config import (
     LOCAL_JSON,
     CONFIG_JSON,
     PUBLIC_KEY_PATH,
-    PRIVATE_KEY_PATH
+    PRIVATE_KEY_PATH,
+    USER_JSON_COLD_START
 );
 
 from shared.cmd    import *;
@@ -35,42 +36,6 @@ CONFIG_JSON_COLD_START    = {
     "app_secret":    "insert your app secret (dropbox)",
 };
 
-USER_JSON_COLD_START      = {
-    "db_path": "",
-    "device_id": "",
-
-    "system_proc_pairs": [
-        ["System", ""],
-        ["Registry", "Registry"],
-        ["smss.exe", "C:\\Windows\\System32\\smss.exe"],
-        ["lsass.exe", "C:\\Windows\\System32\\lsass.exe"],
-        ["csrss.exe", "C:\\Windows\\System32\\csrss.exe"],
-        ["wininit.exe", "C:\\Windows\\System32\\wininit.exe"],
-        ["services.exe", "C:\\Windows\\System32\\services.exe"],
-        ["winlogon.exe", "C:\\Windows\\System32\\winlogon.exe"],
-        ["svchost.exe", "C:\\Windows\\System32\\svchost.exe"],
-        ["fontdrvhost.exe", "C:\\Windows\\System32\\fontdrvhost.exe"],
-        ["dwm.exe", "C:\\Windows\\System32\\dwm.exe"],
-        ["explorer.exe", "C:\\Windows\\explorer.exe"],
-        ["sihost.exe", "C:\\Windows\\System32\\sihost.exe"],
-        ["dllhost.exe", "C:\\Windows\\System32\\dllhost.exe"],
-        ["taskhostw.exe", "C:\\Windows\\System32\\taskhostw.exe"],
-        ["SearchIndexer.exe", "C:\\Windows\\System32\\SearchIndexer.exe"],
-        ["RuntimeBroker.exe", "C:\\Windows\\System32\\RuntimeBroker.exe"],
-        ["SearchApp.exe", "C:\\Windows\\SystemApps\\Microsoft.Windows.Search_cw5n1h2txyewy\\SearchApp.exe"],
-        ["sppsvc.exe", "C:\\Windows\\System32\\sppsvc.exe"],
-        ["WmiPrvSE.exe", "C:\\Windows\\System32\\wbem\\WmiPrvSE.exe"],
-        ["conhost.exe", "C:\\Windows\\System32\\conhost.exe"],
-        ["LogonUI.exe", "C:\\Windows\\System32\\LogonUI.exe"],
-        ["StartMenuExperienceHost.exe", "C:\\Windows\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartMenuExperienceHost.exe"],
-        ["audiodg.exe", "C:\\Windows\\System32\\audiodg.exe"],
-        ["ctfmon.exe", "C:\\Windows\\System32\\ctfmon.exe"],
-        ["service.exe", "C:\\Users\\admin\\Desktop\\service\\service.exe"]
-    ],
-    
-    "screenshot_delay_interval": 30,
-    "sleep_times": []
-}
 
 
 def FILE_EXISTS(path: str):

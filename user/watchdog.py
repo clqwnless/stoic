@@ -3,7 +3,7 @@ from PIL               import ImageGrab;
 from shared.config     import SCREENSHOTS_PATH, SCREENSHOT_DELAY_INTERVAL, SYSTEM_PROC_PAIRS, SNAPSHOTS_JSON;
 from shared.time_utils import get_current_time, get_current_time_str;
 
-from shared.utils      import read_json, write_json, disable_ctrl_c;
+from shared.utils      import read_json, write_json, disable_ctrl_c, restart_func_on_error;
 
 from shared.eth        import push_snapshots, upload_local;
 from shared.acl        import apply_basic_rule;
@@ -19,8 +19,8 @@ import signal;
 
 # for debug basically
 
-DEBUG   = False;
-USE_ETH = False;
+DEBUG   = True;
+USE_ETH = True;
 
 
 snapshots = read_json(SNAPSHOTS_JSON);
@@ -101,6 +101,7 @@ def is_nt_system(user_name):
 
 # watchdogs
 
+@restart_func_on_error
 def wd_record():
     disable_ctrl_c();
 
@@ -128,6 +129,7 @@ def wd_record():
         
         # updating snapshots file (json) (making a backup)
 
+@restart_func_on_error
 def wd_enforce_whitelist(allowed_proc: list):
     disable_ctrl_c();
     
