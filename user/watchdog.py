@@ -19,7 +19,7 @@ import signal;
 
 # for debug basically
 
-DEBUG   = True;
+DEBUG   = False;
 USE_ETH = True;
 
 

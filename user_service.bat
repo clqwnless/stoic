@@ -20,6 +20,7 @@ echo  - [1] Install
 echo  - [2] Delete
 echo  - [3] Stop
 echo  - [4] Start
+echo  - [5] Install in SafeMode (so that the service can't be bypassed)
 echo.
 
 set "choice="
@@ -39,6 +40,8 @@ if %choice% equ 0 (
     call :stop
 ) else if %choice% equ 4 (
     call :start
+) else if %choice% equ 5 (
+	call :install_in_safe_mode
 ) else if /i "%choice%" == "x" (
     exit /b 0
 )
@@ -83,6 +86,9 @@ exit /b 0
 sc stop   %SERVICE_NAME%
 sc delete %SERVICE_NAME%
 
+reg delete "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal\%SERVICE_NAME%" /f
+reg delete "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\%SERVICE_NAME%" /f
+
 pause
 exit /b 0
 
@@ -90,6 +96,15 @@ exit /b 0
 :start
 
 sc start %SERVICE_NAME%
+
+pause
+exit /b 0
+
+
+:install_in_safe_mode
+
+reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal\%SERVICE_NAME%" /ve /t REG_SZ /d Service /f
+reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\%SERVICE_NAME%" /ve /t REG_SZ /d Service /f
 
 pause
 exit /b 0

@@ -5,3 +5,4 @@ psutil
 pyside6
 requests
 pywin32
+nuitka
