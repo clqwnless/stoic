@@ -58,6 +58,13 @@ USER_JSON         = r"C:\stoic_db\user.json";
 SCREENSHOTS_PATH  = r"C:\stoic_db\screenshots";
 UPDATES_CACHE_DIR = r"C:\stoic_updates_cache";
 
+
+# if the setting below is set to true, the stoic won't kill processes that doesn't match the whitelist
+# basically, then the whitelist is disabled, there are no problems with running other processes that are not in this list
+# otherwise, if you want to torque yourself (as i realized later), set it to False
+
+DISABLE_WHITELIST_ENFORCER = True;
+
 # getting root path
 
 IS_COMPILED = hasattr(__main__, "__compiled__");
@@ -110,4 +117,3 @@ SCREENSHOT_DELAY_INTERVAL = USER_DATA["screenshot_delay_interval"];
 # sleep times
 
 SLEEP_TIMES   = USER_DATA["sleep_times"];
-

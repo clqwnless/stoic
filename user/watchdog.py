@@ -130,7 +130,7 @@ def wd_record():
         # updating snapshots file (json) (making a backup)
 
 @restart_func_on_error
-def wd_enforce_whitelist(allowed_proc: list):
+def wd_enforce_whitelist(allowed_proc: list):    
     disable_ctrl_c();
     
     sleep_interval = 0.1; # not to overload the processor
@@ -163,9 +163,9 @@ def wd_enforce_whitelist(allowed_proc: list):
             if (proc_exe.lower() in allowed_proc):
                 continue;
             
-            # (runned as not admin) & (is not system proc) & (is not allowed_proc)
+            # (runned as not nt\authority) & (is not a system proc) & (is not an allowed proc)
             
-            #kill_proc(pid);
+            kill_proc(pid);
         
         current_time = get_current_time();
         time.sleep(sleep_interval);

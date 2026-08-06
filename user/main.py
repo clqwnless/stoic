@@ -7,7 +7,8 @@ from shared.config import (
     DEVICE_ID,
     IS_COMPILED,
     PYTHONW_PATH,
-    SLEEP_TIMES
+    SLEEP_TIMES,
+    DISABLE_WHITELIST_ENFORCER
 );
 
 
@@ -32,6 +33,7 @@ import json;
 import subprocess;
 import sys;
 import secrets;
+import traceback;
 
 
 # GLOBAL VARIABLES
@@ -58,7 +60,9 @@ main_menu = '''
 '''
 
 plan_menu = '''
-  add [mode index] ; push
+  add [mode index] (use if whitelist_enforcer is enabled)
+  new              (use if whitelist_enforcer is disabled)
+  push
 '''
 
 execute_menu = '''
@@ -109,7 +113,14 @@ def run_proc(allowed_proc: list, proc_index: str):
     if (allowed_proc[proc_index] == "hidden"):
         return;
     
-    run_proc_from_current_session(allowed_proc[proc_index]);
+    proc_path = allowed_proc[proc_index];
+    
+    #if (not os.path.exists(proc_path)):
+    #    print(f"\nthe specified file doesn't exist: {proc_path}\n");
+    #    pause();
+    #    return;
+    
+    run_proc_from_current_session(proc_path);
 
 
 def run_extension(ext):
@@ -120,7 +131,10 @@ def run_extension(ext):
 
 def on_exit():
     if (whitelist_enforcer is not None): whitelist_enforcer.terminate();
-    if (recorder is not None): recorder.terminate();
+    if (recorder is not None):           recorder.terminate();
+    
+    print("here on exit");
+    
     write_json(LOCAL_JSON, local);
 
 def enter_win_re():
@@ -202,6 +216,9 @@ def find_active_block(history):
     return None;
 
 def get_allowed_proc(active_block):
+    if (DISABLE_WHITELIST_ENFORCER):
+        return [];
+    
     mode_index   = active_block["mode_index"];
     mode         = local["modes"][mode_index];
 
@@ -360,13 +377,13 @@ def plan_page():
         if (opt == "x"):  return;
         if (opt is None): continue;
         
-        if (opt[:4] == "add "):
+        if (opt[:4] == "add " and not DISABLE_WHITELIST_ENFORCER):
             index = int(opt[4:]);
             if (index is None): continue;
             
             next_block = plan_next_block(index);
-            
-            #print(index);
+        elif (opt == "new" and DISABLE_WHITELIST_ENFORCER):
+            next_block = plan_next_block(None);
         elif (opt == "push"):
             add_event(next_block);
             
@@ -461,9 +478,7 @@ def view_history_page():
 def results_viewer(folder_name):
     results  = get_results_json(DEVICE_ID, folder_name);
     binaries = get_bins(DEVICE_ID, folder_name);
-    
 
-    
     while True:
         cls();
         
@@ -652,7 +667,6 @@ def extensions_page():
 
 # main
 
-
 def main():
     wd_whitelist_enforcer(allowed_proc=[]);
     wd_recorder();
@@ -668,23 +682,19 @@ def main():
         
         if (opt == "exit"):
             on_exit();
-            return;
+            exit(0);
         elif (opt == "shutdown"):
-            shutdown();
             on_exit();
-            return;
+            shutdown();
         elif (opt == "win_re"):
             on_exit();
             enter_win_re();
-            return;
         elif (opt == "bios"):
             on_exit();
             enter_bios();
-            return;
         elif (opt == "reboot"):
             on_exit();
             reboot();
-            return;
         elif (opt == "1"):
             plan_page();
         elif (opt == "2"):
@@ -711,6 +721,9 @@ def main():
 # watchdog runners
 
 def wd_whitelist_enforcer(allowed_proc):
+    if (DISABLE_WHITELIST_ENFORCER):
+        return;
+    
     # если в main то передаётся unix_until=None и allowed_proc=None
     # если в executer то уже соответствующие данные
 
@@ -752,6 +765,14 @@ if __name__ == "__main__":
 
     os.chdir(ROOT_PATH);
     
-    main();
-
-
+    
+    # restart main func on errors (using pause func so that the user can read the exception)
+    
+    while True:
+        try:
+            main();
+        except Exception as e:
+            print(f"main err: {e}");
+            traceback.print_exc();
+            print();
+            pause();
