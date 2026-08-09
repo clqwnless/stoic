@@ -1,7 +1,7 @@
 from PIL               import ImageGrab;
 
-from shared.config     import SCREENSHOTS_PATH, SCREENSHOT_DELAY_INTERVAL, SYSTEM_PROC_PAIRS, SNAPSHOTS_JSON;
-from shared.time_utils import get_current_time, get_current_time_str;
+from shared.config     import SCREENSHOTS_PATH, SCREENSHOT_DELAY_INTERVAL, SYSTEM_PROC_PAIRS, SNAPSHOTS_JSON, DISABLE_WHITELIST_ENFORCER;
+from shared.time_utils import get_current_time, get_current_time_str, is_time_in_range, get_local_hour_minute;
 
 from shared.utils      import read_json, write_json, disable_ctrl_c, restart_func_on_error;
 
@@ -15,6 +15,7 @@ import os;
 import random;
 import time;
 import signal;
+import multiprocessing;
 
 
 # for debug basically
@@ -23,8 +24,13 @@ DEBUG   = False;
 USE_ETH = True;
 
 
+# global variables
+
 snapshots = read_json(SNAPSHOTS_JSON);
-#print(snapshots);
+
+whitelist_enforcer   = None;
+sleep_times_enforcer = None;
+recorder             = None;
 
 
 # snapshot (json)
@@ -130,7 +136,7 @@ def wd_record():
         # updating snapshots file (json) (making a backup)
 
 @restart_func_on_error
-def wd_enforce_whitelist(allowed_proc: list):    
+def wd_enforce_whitelist(allowed_proc: list):
     disable_ctrl_c();
     
     sleep_interval = 0.1; # not to overload the processor
@@ -170,6 +176,84 @@ def wd_enforce_whitelist(allowed_proc: list):
         current_time = get_current_time();
         time.sleep(sleep_interval);
 
+@restart_func_on_error
+def wd_enforce_sleep_times(sleep_times: list):
+    '''
+    
+    example of sleep times list
+    
+    user.json:
+    
+    "sleep_times": [
+        [22, 0, 7, 0],
+        [10, 0, 15, 0]
+    ]
+    
+    '''
+    
+    disable_ctrl_c();
+    sleep_interval = 1;
+
+    while True:
+        for pair in sleep_times:
+            start_time = tuple(pair[:2]); # [22, 0]
+            end_time   = tuple(pair[2:]); # [7, 0]
+            
+            current_time = get_local_hour_minute();
+            
+            if (is_time_in_range(start_time, current_time, end_time)):
+                wd_whitelist_enforcer([], ignore_config=True);
+            elif (whitelist_enforcer is not None):
+                whitelist_enforcer.terminate();
+            
+            time.sleep(sleep_interval);
+
+
+# watchdog runners
+
+def wd_whitelist_enforcer(allowed_proc, ignore_config=False):
+    # ignore_flag used in wd_enforce_sleep_times
+    
+    if (DISABLE_WHITELIST_ENFORCER and not ignore_config):
+        return;
+    
+    # если в main то передаётся unix_until=None и allowed_proc=None
+    # если в executer то уже соответствующие данные
+
+    global whitelist_enforcer;
+    
+    if (whitelist_enforcer is not None):
+        whitelist_enforcer.terminate();
+        #whitelist_enforcer.join();
+    
+    whitelist_enforcer = multiprocessing.Process(
+        target=wd_enforce_whitelist,
+        kwargs={
+            "allowed_proc": allowed_proc
+        }
+    );
+    
+    whitelist_enforcer.start();
+
+def wd_recorder():
+    # даже не нужно убивать этот процесс (он всегда запущен как бы)
+    
+    global recorder;
+    recorder = multiprocessing.Process(target=wd_record);
+
+    recorder.start();
+
+def wd_sleep_times_enforcer(sleep_times):
+    global sleep_times_enforcer;
+    
+    sleep_times_enforcer = multiprocessing.Process(
+        target=wd_enforce_sleep_times,
+        kwargs={
+            "sleep_times": sleep_times
+        }
+    );
+    
+    sleep_times_enforcer.start();
 
 
 # helper function

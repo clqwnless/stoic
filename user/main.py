@@ -42,8 +42,7 @@ snapshots          = None;
 local              = None;
 extensions         = None;
 
-whitelist_enforcer = None;
-recorder           = None;
+
 
 # render
 
@@ -130,10 +129,14 @@ def run_extension(ext):
         pass;
 
 def on_exit():
-    if (whitelist_enforcer is not None): whitelist_enforcer.terminate();
-    if (recorder is not None):           recorder.terminate();
+    if (watchdog.whitelist_enforcer is not None):
+        watchdog.whitelist_enforcer.terminate();
     
-    print("here on exit");
+    if (watchdog.recorder is not None):
+        watchdog.recorder.terminate();
+    
+    if (watchdog.sleep_times_enforcer is not None):
+        watchdog.sleep_times_enforcer.terminate();
     
     write_json(LOCAL_JSON, local);
 
@@ -290,8 +293,8 @@ def active_block_checker():
 def sleep_control():
     for sleep_time in SLEEP_TIMES:
         current_time = get_local_hour_minute();
-        start_time   = tuple(sleep_time[0]);
-        end_time     = tuple(sleep_time[1]);
+        start_time   = tuple(sleep_time[:2]);
+        end_time     = tuple(sleep_time[2:]);
         
         if (is_time_in_range(start_time, current_time, end_time)):
             cls();
@@ -399,15 +402,16 @@ def execute_page():
     active_block = find_active_block(local["events"]);
 
     if (not active_block_checker()): return;
-    if (not sleep_control()):        return;
-    
+
     allowed_proc = get_allowed_proc(active_block);
     
     # enabling watchdog
     
-    wd_whitelist_enforcer(allowed_proc=allowed_proc);
+    watchdog.wd_whitelist_enforcer(allowed_proc=allowed_proc);
     
     while True:
+        if (not sleep_control()):
+            return;
         
         # rendering
         
@@ -446,8 +450,15 @@ def execute_page():
 def processes_info_page():
     cls();
     print("\nProcesses:\n");
-    print(f" - whitelist_enforcer: alive={whitelist_enforcer.is_alive() if whitelist_enforcer else False}");
-    print(f" - recorder:           alive={recorder.is_alive() if recorder else False}\n");
+    
+    # bro, whitelist_enforcer will always be False if it was runned by sleep_times_enforcer 
+    # since I don't want to implement shared space between sleep_times_enforcer and current process (main) now
+    # and "exit" in main won't work if whitelist_enforcer was runned by sleep_times_enforcer since it is still running
+    
+    print(f" - whitelist_enforcer:   alive={watchdog.whitelist_enforcer.is_alive() if watchdog.whitelist_enforcer else False}");
+    print(f" - sleep_times_enforcer: alive={watchdog.sleep_times_enforcer.is_alive() if watchdog.sleep_times_enforcer else False}");
+    print(f" - recorder:             alive={watchdog.recorder.is_alive() if watchdog.recorder else False}\n");
+    
 
     pause();
 
@@ -613,7 +624,7 @@ def view_blocks():
     pause();
 
 def ext_page(ext):
-    wd_whitelist_enforcer(allowed_proc=ext["user_allowed_proc"]);
+    watchdog.wd_whitelist_enforcer(allowed_proc=ext["user_allowed_proc"]);
 
     while True:
         # rendering
@@ -662,14 +673,17 @@ def extensions_page():
         
         if (index is not None and 0 <= index < len(extensions)):
             ext_page(extensions[index]);
-            wd_whitelist_enforcer(allowed_proc=[]);
+            watchdog.wd_whitelist_enforcer(allowed_proc=[]);
 
 
 # main
 
 def main():
-    wd_whitelist_enforcer(allowed_proc=[]);
-    wd_recorder();
+    watchdog.wd_whitelist_enforcer(allowed_proc=[]);
+    watchdog.wd_recorder();
+    
+    if (bool(SLEEP_TIMES)):
+        watchdog.wd_sleep_times_enforcer(SLEEP_TIMES);
     
     while True:
         cls();
@@ -702,11 +716,7 @@ def main():
             
             # after exit from executer
             
-            wd_whitelist_enforcer(allowed_proc=[]);
-            current_state = get_current_state();
-            
-            if (current_state == "stopped"):
-                recorder.terminate();
+            watchdog.wd_whitelist_enforcer(allowed_proc=[]);
         elif (opt == "3"):
             processes_info_page();
         elif (opt == "4"):
@@ -718,37 +728,6 @@ def main():
         elif (opt == "7"):
             extensions_page();
 
-# watchdog runners
-
-def wd_whitelist_enforcer(allowed_proc):
-    if (DISABLE_WHITELIST_ENFORCER):
-        return;
-    
-    # если в main то передаётся unix_until=None и allowed_proc=None
-    # если в executer то уже соответствующие данные
-
-    global whitelist_enforcer;
-    
-    if (whitelist_enforcer is not None):
-        whitelist_enforcer.terminate();
-        #whitelist_enforcer.join();
-    
-    whitelist_enforcer = multiprocessing.Process(
-        target=watchdog.wd_enforce_whitelist,
-        kwargs={
-            "allowed_proc": allowed_proc
-        }
-    );
-    
-    whitelist_enforcer.start();
-
-def wd_recorder():
-    # даже не нужно убивать этот процесс (он всегда запущен как бы)
-    
-    global recorder;
-    recorder = multiprocessing.Process(target=watchdog.wd_record);
-
-    recorder.start();
 
 
 
