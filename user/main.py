@@ -2,11 +2,9 @@ from shared.config import (
     SNAPSHOTS_JSON,
     LOCAL_JSON,
     ROOT_PATH,
-    GUARDIAN_PATH,
     EXTENSIONS_JSON,
     DEVICE_ID,
     IS_COMPILED,
-    PYTHONW_PATH,
     SLEEP_TIMES,
     DISABLE_WHITELIST_ENFORCER
 );
@@ -19,10 +17,10 @@ from shared.eth        import get_date_folders, get_results_json, get_bins;
 from shared.cmd        import *;
 from shared.time_utils import *;
 
-from .winapi import run_proc_from_current_session, disable_close_button;
+from user.winapi import run_proc_from_current_session, disable_close_button;
 
 # from current directory
-from . import watchdog;
+from user import watchdog;
 
 
 import os;

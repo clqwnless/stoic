@@ -10,7 +10,9 @@ __pycache__/
 
 build/
 dist/
-
+main.dist/
+db/
+updates_cache/
 
 # Compiled binaries
 

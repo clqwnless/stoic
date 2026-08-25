@@ -123,7 +123,7 @@ class StoicGuardian(win32serviceutil.ServiceFramework):
     
     def start_runner(self, sid):
         try:
-            handle, thread, _, _   = launch_system_to_session(sid, RUNNER_COMMAND, WORKING_DIRECTORY);
+            handle, thread, _, _   = launch_system_to_session(sid, RUNNER_COMMAND, None);
         except Exception as e:
             log(f"launch_system_to_session err: {e}");
             return;
