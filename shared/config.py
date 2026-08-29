@@ -9,8 +9,9 @@ import __main__;
 
 
 USER_JSON_COLD_START = {
-    "db_path": "C:\\stoic_db",
     "device_id": "stoic user",
+    
+    "disable_whitelist_enforcer": True,
 
     "system_proc_pairs": [
         ["System", ""],
@@ -51,13 +52,6 @@ def PATH(*args):
     return os.path.join(*args);
 
 
-
-# if the setting below is set to true, the stoic won't kill processes that doesn't match the whitelist
-# basically, then the whitelist is disabled, there are no problems with running other processes that are not in this list
-# otherwise, if you want to torque yourself (as i realized later), set it to False
-
-DISABLE_WHITELIST_ENFORCER = True;
-
 # getting root path
 
 IS_COMPILED = hasattr(__main__, "__compiled__");
@@ -92,6 +86,13 @@ if (os.path.exists(USER_JSON)):
     USER_DATA = read_json(USER_JSON);
 else:
     USER_DATA = USER_JSON_COLD_START;
+
+
+# if the setting below is set to true, the stoic won't kill processes that doesn't match the whitelist
+# basically, then the whitelist is disabled, there are no problems with running other processes that are not in this list
+# otherwise, if you want to torque yourself (as i realized later), set it to False
+
+DISABLE_WHITELIST_ENFORCER = USER_DATA["disable_whitelist_enforcer"];
 
 # desktop info
 
