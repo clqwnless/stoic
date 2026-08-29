@@ -72,3 +72,10 @@ def restart_func_on_error(func):
     
     return wrapper;
 
+
+def get_val(inp_raw, core, type_func):
+    try:
+        val = type_func(inp_raw[len(core):]);
+    except:
+        return None;
+    return val;

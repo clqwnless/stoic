@@ -1,5 +1,6 @@
-from shared.acl import reset_permissions, apply_basic_rule, apply_protect_rule;
-from shared.cmd import *;
+from shared.acl   import reset_permissions, apply_basic_rule, apply_protect_rule;
+from shared.cmd   import *;
+from shared.utils import get_val;
 
 from pathlib import Path
 
@@ -28,14 +29,6 @@ def get_folder_content(path):
 
 def get_parent_dir(path):
     return str(Path(path).parent.resolve());
-
-
-def get_val(inp_raw, core, type_func):
-    try:
-        val = type_func(inp_raw[len(core):]);
-    except:
-        return None;
-    return val;
 
 def is_valid_index(items, index):
     if (index is not None and 0 <= index < len(items)):

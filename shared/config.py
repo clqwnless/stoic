@@ -67,8 +67,12 @@ else:
 # folders 
 
 DB_PATH           = PATH(ROOT_PATH, "db");
-UPDATES_CACHE_DIR = PATH(ROOT_PATH, "updates_cache");
+UPDATES_CACHE_DIR = PATH(ROOT_PATH, "temp", "updates_cache");
 SCREENSHOTS_PATH  = PATH(DB_PATH, "screenshots");
+
+# ...
+
+PENDING_UPDATE_FILE = PATH(ROOT_PATH, "temp", "pending_update.json");
 
 # json paths
 

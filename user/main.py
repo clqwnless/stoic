@@ -21,7 +21,7 @@ from user.winapi import run_proc_from_current_session, disable_close_button;
 
 # from current directory
 from user import watchdog;
-
+from user import updater;
 
 import os;
 import time;
@@ -54,6 +54,7 @@ main_menu = '''
   [5] Progress
   [6] View Blocks
   [7] Extensions
+  [8] Update
 '''
 
 plan_menu = '''
@@ -725,6 +726,8 @@ def main():
             view_blocks();
         elif (opt == "7"):
             extensions_page();
+        elif (opt == "8"):
+            updater.start();
 
 
 

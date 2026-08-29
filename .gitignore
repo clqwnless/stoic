@@ -13,6 +13,7 @@ dist/
 main.dist/
 db/
 updates_cache/
+temp/
 
 # Compiled binaries
 
