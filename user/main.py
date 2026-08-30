@@ -16,6 +16,7 @@ from shared.eth        import get_date_folders, get_results_json, get_bins;
 
 from shared.cmd        import *;
 from shared.time_utils import *;
+from shared.power      import *;
 
 from user.winapi import run_proc_from_current_session, disable_close_button;
 
@@ -139,45 +140,6 @@ def on_exit():
     
     write_json(LOCAL_JSON, local);
 
-def enter_win_re():
-    args = [
-        "shutdown",
-        "/r",
-        "/o",
-        "/f",
-        "/t",
-        "0"
-    ];
-    subprocess.run(args, shell=True);
-
-def enter_bios():
-    args = [
-        "shutdown",
-        "/r",
-        "/fw",
-        "/t",
-        "0"
-    ];
-    subprocess.run(args, shell=True);
-
-def reboot():
-    args = [
-        "shutdown",
-        "/r",
-        "/f",
-        "/t",
-        "0"
-    ];
-    subprocess.run(args, shell=True);
-
-def shutdown():
-    args = [
-        "shutdown",
-        "/s",
-        "/t",
-        "0"
-    ];
-    subprocess.run(args, shell=True);
 
 
 # data

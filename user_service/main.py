@@ -29,6 +29,8 @@ from shared.git    import process_commit;
 from shared.utils  import read_json;
 from shared.config import PENDING_UPDATE_FILE, UPDATES_CACHE_DIR;
 
+from shared.power  import reboot;
+
 from pathlib       import Path;
 
 import json;
@@ -38,7 +40,8 @@ import secrets;
 import tempfile;
 import shutil;
 
-ON_RESUME_ENV_VAL = "STOIC_GUARDIAN_ON_RESUME";
+ON_RESUME_ENV       = "STOIC_GUARDIAN_ON_RESUME";
+STOIC_ROOT_PATH_ENV = "STOIC_ROOT_PATH";
 
 # i hate debugging this service so i decided to create a except hook
 
@@ -130,10 +133,13 @@ def launch_system_to_session(session_id, command, working_directory=None):
 def _stoic_updater():
     UPDATE_FILES = [
         "stoic.exe",
-        "service.exe"
+        "stoic_guardian.exe"
     ];
     
     AMOUNT_OF_EXES = 2;
+    
+    if (not os.path.exists(PENDING_UPDATE_FILE)):
+        return;
     
     commit = read_json(PENDING_UPDATE_FILE);
     path   = process_commit(get_repo(), UPDATES_CACHE_DIR, commit);
@@ -149,18 +155,29 @@ def _stoic_updater():
         log(f"stoic updater error: the amount of exes was not expected, expected: {AMOUNT_OF_EXES}, got: {len(exes)}");
         return -1;
     
-    if (exes != UPDATE_FILES):
+    # set ignores the order of elements
+    
+    if (set(exes) != set(UPDATE_FILES)):
         log(f"stoic updater error: expected 'exes' in the commit: {UPDATE_FILES}, got: {exes}");
         return -2;
     
+    # root path check
+    
+    stoic_root_path = os.getenv(STOIC_ROOT_PATH_ENV);
+    
+    if (stoic_root_path is None or not os.path.exists(stoic_root_path)):
+        log(f"invalid {STOIC_ROOT_PATH_ENV} (env): {stoic_root_path}");
+        return -3;
+    
     # update
     
+    for upd_file in UPDATE_FILES:
+        src_path  = os.path.join(commit_root, upd_file);
+        dest_path = os.path.join(stoic_root_path, upd_file);
     
+        shutil.copy2(src_path, dest_path);
 
-    
-    
 
-    print();
 
 def stoic_updater():
     try:
@@ -306,16 +323,22 @@ def run_service(service_name):
 
 def mark_on_resume():
     subprocess.run(
-        f'setx {ON_RESUME_ENV_VAL} 1',
+        f'setx {ON_RESUME_ENV} 1',
+        shell=True
+    );
+    
+    root_path = get_service_path().parent;
+    
+    subprocess.run(
+        f'setx {STOIC_ROOT_PATH_ENV} "{root_path}"',
         shell=True
     );
 
 def unmark_on_resume():
     subprocess.run(
-        f'setx {ON_RESUME_ENV_VAL} 0',
+        f'setx {ON_RESUME_ENV} 0',
         shell=True
     );
-
 
 
 def delete_service(service_name):
@@ -338,12 +361,16 @@ def copy_service_to_temp():
     return dest_path;
 
 def is_temp_service():
-    if (os.getenv(ON_RESUME_ENV_VAL) == "1"):
+    if (os.getenv(ON_RESUME_ENV) == "1"):
         return True;
     return False;
 
 
 if __name__ == "__main__":
+
+    stoic_updater();
+    exit(0);
+
     if (not is_temp_service()):
         binPath      = copy_service_to_temp();
         service_name = install_temp_service(binPath);
@@ -354,8 +381,14 @@ if __name__ == "__main__":
         delete_service(service_name);
         
         exit(0);
-    else:
-        unmark_on_resume();
+
+    unmark_on_resume();
+    
+    updated = stoic_updater();
+    
+    if (updated):
+        reboot();
+        exit(0);
     
     # capturing errors so that debugging is not hell
 
