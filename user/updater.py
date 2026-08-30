@@ -71,13 +71,14 @@ def main(repo):
             
             pause();
 
-def start():
-    r = Repository(
+def get_repo():
+    return Repository(
         owner=OWNER,
         name=REPO
     );
-    
-    main(r);
+
+def start():
+    main(get_repo());
 
 
 if __name__ == "__main__":

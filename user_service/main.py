@@ -13,13 +13,30 @@ import ctypes;
 import time;
 
 import traceback;
-import sys;
 import threading;
 import faulthandler;
+
+import sys;
+
 
 
 from user_service.config import *;
 
+# for stoic_updater
+
+from user.updater  import get_repo;
+from shared.git    import process_commit;
+from shared.utils  import read_json;
+from shared.config import PENDING_UPDATE_FILE, UPDATES_CACHE_DIR;
+
+from pathlib       import Path;
+
+import json;
+import os;
+import subprocess;
+import secrets;
+import tempfile;
+import shutil;
 
 # i hate debugging this service so i decided to create a except hook
 
@@ -106,6 +123,53 @@ def launch_system_to_session(session_id, command, working_directory=None):
     
     return hProcess, hThread, pid, tid;
 
+# updater
+
+def _stoic_updater():
+    UPDATE_FILES = [
+        "stoic.exe",
+        "service.exe"
+    ];
+    
+    AMOUNT_OF_EXES = 2;
+    
+    commit = read_json(PENDING_UPDATE_FILE);
+    path   = process_commit(get_repo(), UPDATES_CACHE_DIR, commit);
+    
+    child  = os.listdir(path)[0];
+    commit_root = os.path.join(path, child);
+    
+    # commit checks
+    
+    exes = [entry.lower() for entry in os.listdir(commit_root) if entry[-4:] == '.exe'];
+    
+    if (len(exes) != AMOUNT_OF_EXES):
+        log(f"stoic updater error: the amount of exes was not expected, expected: {AMOUNT_OF_EXES}, got: {len(exes)}");
+        return -1;
+    
+    if (exes != UPDATE_FILES):
+        log(f"stoic updater error: expected 'exes' in the commit: {UPDATE_FILES}, got: {exes}");
+        return -2;
+    
+    # update
+    
+    
+
+    
+    
+
+    print();
+
+def stoic_updater():
+    try:
+        _stoic_updater();
+    except:
+        return False;
+    
+    
+    return True;
+
+# ...
 
 class StoicGuardian(win32serviceutil.ServiceFramework):
 
@@ -219,7 +283,58 @@ class StoicGuardian(win32serviceutil.ServiceFramework):
                 break;
 
 
+def get_service_path():
+    return Path(sys.argv[0]).resolve();
+
+def install_temp_service(binPath):
+    temp_service_name = 'StoicGuardianTemp_' + secrets.token_hex(4);
+
+    subprocess.run(
+        f'sc start {temp_service_name} binPath="{binPath}" start=auto obj= LocalSystem',
+        shell=True
+    );
+    
+    return temp_service_name;
+
+def run_temp_service(temp_service_name):
+    subprocess.run(
+        f'sc start {temp_service_name}',
+        shell=True
+    );
+
+def delete_temp_service(temp_service_name):
+    subprocess.run(
+        f'sc delete {temp_service_name}',
+        shell=True
+    );
+
+def copy_service_to_temp():
+    temp_dir     = Path(tempfile.gettempdir());
+    service_path = Path(sys.argv[0]).resolve();
+    dest_path    = temp_dir / service_path.name;
+    
+    shutil.copy2(service_path, dest_path);
+    
+    log(f"temp_dir: {temp_dir}");
+    log(f"service_path: {service_path}");
+    log(f"dest_path: {dest_path}");
+    
+    return dest_path;
+
+#def is_temp_service():
+#    
+
+
 if __name__ == "__main__":
+
+    # install_temp_service();
+    
+    binPath      = copy_service_to_temp();
+    #service_name = install_temp_service(binPath);
+    #run_temp_service(service_name);
+    #delete_temp_service(service_name);
+    
+    
     # capturing errors so that debugging is not hell
 
     sys.excepthook       = exception_hook;

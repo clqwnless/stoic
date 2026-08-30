@@ -63,5 +63,6 @@ def process_commit(repo, dest_path, commit):
     path = os.path.join(dest_path, file_name);
     
     unzip_cached_commit(zip_bytes, path);
-
+    
+    return path;
 
