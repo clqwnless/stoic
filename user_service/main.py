@@ -289,9 +289,9 @@ def get_service_path():
 
 def install_temp_service(binPath):
     temp_service_name = 'StoicGuardianTemp_' + secrets.token_hex(4);
-
+    
     subprocess.run(
-        f'sc start {temp_service_name} binPath="{binPath}" start=auto obj= LocalSystem',
+        f'sc create {temp_service_name} binPath="{binPath}" start=auto obj= LocalSystem',
         shell=True
     );
     
@@ -331,9 +331,9 @@ def copy_service_to_temp():
     
     shutil.copy2(service_path, dest_path);
     
-    log(f"temp_dir: {temp_dir}");
-    log(f"service_path: {service_path}");
-    log(f"dest_path: {dest_path}");
+    #log(f"temp_dir: {temp_dir}");
+    #log(f"service_path: {service_path}");
+    #log(f"dest_path: {dest_path}");
     
     return dest_path;
 
@@ -352,6 +352,8 @@ if __name__ == "__main__":
         
         run_service(service_name);
         delete_service(service_name);
+        
+        exit(0);
     else:
         unmark_on_resume();
     
