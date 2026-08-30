@@ -38,6 +38,8 @@ import secrets;
 import tempfile;
 import shutil;
 
+ON_RESUME_ENV_VAL = "STOIC_GUARDIAN_ON_RESUME";
+
 # i hate debugging this service so i decided to create a except hook
 
 def exception_hook(exc_type, exc_value, exc_tb):
@@ -165,7 +167,6 @@ def stoic_updater():
         _stoic_updater();
     except:
         return False;
-    
     
     return True;
 
@@ -296,15 +297,30 @@ def install_temp_service(binPath):
     
     return temp_service_name;
 
-def run_temp_service(temp_service_name):
+def run_service(service_name):
     subprocess.run(
-        f'sc start {temp_service_name}',
+        f'sc start {service_name}',
+        shell=True
+    );
+    
+
+def mark_on_resume():
+    subprocess.run(
+        f'setx {ON_RESUME_ENV_VAL} 1',
         shell=True
     );
 
-def delete_temp_service(temp_service_name):
+def unmark_on_resume():
     subprocess.run(
-        f'sc delete {temp_service_name}',
+        f'setx {ON_RESUME_ENV_VAL} 0',
+        shell=True
+    );
+
+
+
+def delete_service(service_name):
+    subprocess.run(
+        f'sc delete {service_name}',
         shell=True
     );
 
@@ -321,19 +337,23 @@ def copy_service_to_temp():
     
     return dest_path;
 
-#def is_temp_service():
-#    
+def is_temp_service():
+    if (os.getenv(ON_RESUME_ENV_VAL) == "1"):
+        return True;
+    return False;
 
 
 if __name__ == "__main__":
-
-    # install_temp_service();
-    
-    binPath      = copy_service_to_temp();
-    #service_name = install_temp_service(binPath);
-    #run_temp_service(service_name);
-    #delete_temp_service(service_name);
-    
+    if (not is_temp_service()):
+        binPath      = copy_service_to_temp();
+        service_name = install_temp_service(binPath);
+        
+        mark_on_resume();
+        
+        run_service(service_name);
+        delete_service(service_name);
+    else:
+        unmark_on_resume();
     
     # capturing errors so that debugging is not hell
 

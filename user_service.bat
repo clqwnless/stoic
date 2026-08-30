@@ -21,6 +21,7 @@ echo  - [2] Delete
 echo  - [3] Stop
 echo  - [4] Start
 echo  - [5] Install in SafeMode (so that the service can't be bypassed)
+echo  - [6] Reset env values
 echo.
 
 set "choice="
@@ -42,6 +43,8 @@ if %choice% equ 0 (
     call :start
 ) else if %choice% equ 5 (
 	call :install_in_safe_mode
+) else if %choice% equ 6 (
+    call :reset_env_values
 ) else if /i "%choice%" == "x" (
     exit /b 0
 )
@@ -55,7 +58,7 @@ goto main
 cd "%SCRIPT_DIR%"
 call Scripts\activate.bat > nul 2>&1
 
-python.exe -m nuitka user_service\main.py --onefile --remove-output --clean-cache=all --output-filename=stoic_guardian
+python.exe -m nuitka user_service\main.py --onefile --remove-output --clean-cache=all --output-filename=stoic_guardian --nofollow-import-to=dropbox.*
 
 pause
 exit /b 0
@@ -105,6 +108,14 @@ exit /b 0
 
 reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal\%SERVICE_NAME%" /ve /t REG_SZ /d Service /f
 reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\%SERVICE_NAME%" /ve /t REG_SZ /d Service /f
+
+pause
+exit /b 0
+
+:reset_env_values
+
+echo Resetting STOIC_GUARDIAN_ON_RESUME
+setx STOIC_GUARDIAN_ON_RESUME 0
 
 pause
 exit /b 0
