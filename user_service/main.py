@@ -27,7 +27,7 @@ from user_service.config import *;
 from user.updater  import get_repo;
 from shared.git    import process_commit;
 from shared.utils  import read_json;
-from shared.config import PENDING_UPDATE_FILE, UPDATES_CACHE_DIR;
+from shared.config import GET_PENDING_UPDATE_FILE, GET_UPDATES_CACHE_DIR;
 
 from shared.power  import reboot;
 
@@ -133,16 +133,21 @@ def launch_system_to_session(session_id, command, working_directory=None):
 def _stoic_updater():
     UPDATE_FILES = [
         "stoic.exe",
-        "stoic_guardian.exe"
+        "service.exe"
     ];
     
     AMOUNT_OF_EXES = 2;
     
-    if (not os.path.exists(PENDING_UPDATE_FILE)):
-        return;
+    stoic_root_path     = os.getenv(STOIC_ROOT_PATH_ENV);
     
-    commit = read_json(PENDING_UPDATE_FILE);
-    path   = process_commit(get_repo(), UPDATES_CACHE_DIR, commit);
+    pending_update_file = GET_PENDING_UPDATE_FILE(stoic_root_path);
+    updates_cache_dir   = GET_UPDATES_CACHE_DIR(stoic_root_path);
+    
+    if (not os.path.exists(pending_update_file)):
+        return -1;
+    
+    commit = read_json(pending_update_file);
+    path   = process_commit(get_repo(), updates_cache_dir, commit);
     
     child  = os.listdir(path)[0];
     commit_root = os.path.join(path, child);
@@ -153,36 +158,46 @@ def _stoic_updater():
     
     if (len(exes) != AMOUNT_OF_EXES):
         log(f"stoic updater error: the amount of exes was not expected, expected: {AMOUNT_OF_EXES}, got: {len(exes)}");
-        return -1;
+        return -2;
     
     # set ignores the order of elements
     
     if (set(exes) != set(UPDATE_FILES)):
         log(f"stoic updater error: expected 'exes' in the commit: {UPDATE_FILES}, got: {exes}");
-        return -2;
+        return -3;
     
     # root path check
     
-    stoic_root_path = os.getenv(STOIC_ROOT_PATH_ENV);
+    
+    stoic_service_name = get_service_path().name;
     
     if (stoic_root_path is None or not os.path.exists(stoic_root_path)):
         log(f"invalid {STOIC_ROOT_PATH_ENV} (env): {stoic_root_path}");
-        return -3;
+        return -4;
     
     # update
     
     for upd_file in UPDATE_FILES:
         src_path  = os.path.join(commit_root, upd_file);
-        dest_path = os.path.join(stoic_root_path, upd_file);
-    
+        
+        if (upd_file == "service.exe"):
+            dest_path = os.path.join(stoic_root_path, stoic_service_name);
+        else:
+            dest_path = os.path.join(stoic_root_path, upd_file);
+        
         shutil.copy2(src_path, dest_path);
+
+    return 1;
 
 
 
 def stoic_updater():
     try:
-        _stoic_updater();
+        res = _stoic_updater();
     except:
+        return False;
+    
+    if (res < 0):
         return False;
     
     return True;
@@ -367,11 +382,9 @@ def is_temp_service():
 
 
 if __name__ == "__main__":
-
-    stoic_updater();
-    exit(0);
-
     if (not is_temp_service()):
+        # ran as resume
+    
         binPath      = copy_service_to_temp();
         service_name = install_temp_service(binPath);
         
@@ -382,8 +395,9 @@ if __name__ == "__main__":
         
         exit(0);
 
+    # not ran as resume
+
     unmark_on_resume();
-    
     updated = stoic_updater();
     
     if (updated):
