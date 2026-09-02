@@ -26,12 +26,14 @@ from user_service.config import *;
 
 from user.updater  import get_repo;
 from shared.git    import process_commit;
-from shared.utils  import read_json;
-from shared.config import GET_PENDING_UPDATE_FILE, GET_UPDATES_CACHE_DIR;
+from shared.utils  import read_json, write_json;
+from shared.config import PENDING_UPDATE_FILE, UPDATE_FILE, UPDATE_FILE_NAME, UPDATES_CACHE_DIR;
 
 from shared.power  import reboot;
 
 from pathlib       import Path;
+
+from dataclasses import dataclass;
 
 import json;
 import os;
@@ -39,9 +41,6 @@ import subprocess;
 import secrets;
 import tempfile;
 import shutil;
-
-ON_RESUME_ENV       = "STOIC_GUARDIAN_ON_RESUME";
-STOIC_ROOT_PATH_ENV = "STOIC_ROOT_PATH";
 
 # i hate debugging this service so i decided to create a except hook
 
@@ -130,26 +129,28 @@ def launch_system_to_session(session_id, command, working_directory=None):
 
 # updater
 
-def _stoic_updater():
-    UPDATE_FILES = [
-        "stoic.exe",
-        "service.exe"
-    ];
+UPDATE_FILES = [
+    "stoic.exe",
+    "service.exe"
+];
+AMOUNT_OF_EXES = 2;
+
+
+
+def update_cleanup(update_path):
+    update_path = Path(update_path);
     
-    AMOUNT_OF_EXES = 2;
+    if (update_path.exists()):
+        shutil.rmtree(update_path);
+
+def _get_update(service_name):
+    if (not os.path.exists(PENDING_UPDATE_FILE)):
+        return -1, None;
     
-    stoic_root_path     = os.getenv(STOIC_ROOT_PATH_ENV);
+    commit = read_json(PENDING_UPDATE_FILE);
+    path   = process_commit(get_repo(), UPDATES_CACHE_DIR, commit);
     
-    pending_update_file = GET_PENDING_UPDATE_FILE(stoic_root_path);
-    updates_cache_dir   = GET_UPDATES_CACHE_DIR(stoic_root_path);
-    
-    if (not os.path.exists(pending_update_file)):
-        return -1;
-    
-    commit = read_json(pending_update_file);
-    path   = process_commit(get_repo(), updates_cache_dir, commit);
-    
-    child  = os.listdir(path)[0];
+    child       = os.listdir(path)[0];
     commit_root = os.path.join(path, child);
     
     # commit checks
@@ -158,63 +159,121 @@ def _stoic_updater():
     
     if (len(exes) != AMOUNT_OF_EXES):
         log(f"stoic updater error: the amount of exes was not expected, expected: {AMOUNT_OF_EXES}, got: {len(exes)}");
-        return -2;
+        update_cleanup();
+        return -2, None;
     
     # set ignores the order of elements
     
     if (set(exes) != set(UPDATE_FILES)):
         log(f"stoic updater error: expected 'exes' in the commit: {UPDATE_FILES}, got: {exes}");
-        return -3;
+        update_cleanup();
+        return -3, None;
     
     # root path check
     
+    stoic_root_path     = get_service_path();
+    
+    # ok (success)
     
     stoic_service_name = get_service_path().name;
     
-    if (stoic_root_path is None or not os.path.exists(stoic_root_path)):
-        log(f"invalid {STOIC_ROOT_PATH_ENV} (env): {stoic_root_path}");
-        return -4;
+    return 1, {
+        "service_name": service_name,
+        "commit_path": commit_root,
+        "service_exe_name": str(get_service_path().name),
+        "stoic_root_path": str(get_service_path().parent)
+    };
+
+# public api
+
+def get_update(service_name):
+    try:
+        ret, update = _get_update(service_name);
+    except Exception as e:
+        log(f"get_update err: {e}");
+        return -5, None;
+    else:
+        return ret, update;
+
+def update():
+    if (not os.path.exists(UPDATE_FILE)):
+        return -1, None;
     
-    # update
+    update = read_json(UPDATE_FILE);
     
     for upd_file in UPDATE_FILES:
-        src_path  = os.path.join(commit_root, upd_file);
+        src_path  = os.path.join(update["commit_path"], upd_file);
         
         if (upd_file == "service.exe"):
-            dest_path = os.path.join(stoic_root_path, stoic_service_name);
+            dest_path = os.path.join(update["stoic_root_path"], update["service_exe_name"]);
         else:
-            dest_path = os.path.join(stoic_root_path, upd_file);
+            dest_path = os.path.join(update["stoic_root_path"], upd_file);
         
         shutil.copy2(src_path, dest_path);
-
-    return 1;
-
-
-
-def stoic_updater():
-    try:
-        res = _stoic_updater();
-    except:
-        return False;
     
-    if (res < 0):
-        return False;
-    
-    return True;
+    return 0, update;
+
+def is_update_mode():
+    if (os.path.exists(UPDATE_FILE)):
+        return True;
+    return False;
 
 # ...
+
+class ServiceShutdown(Exception):
+    pass;
 
 class StoicGuardian(win32serviceutil.ServiceFramework):
 
     _svc_name_ = "StoicGuardian"
     _svc_display_name_ = "StoicGuardian"
 
-    def __init__(self,args):
+    def __init__(self, args):
         super().__init__(args)
         self.stop_event = win32event.CreateEvent(None,0,0,None)
 
+        self.args = args;
+        self.service_name = args[0];
+
         self.runners         = dict();
         self.active_sessions = set();
+
+        self.update_check();
+
+    def prepare_update(self, update):
+        log("prepare_update");
+    
+        temp_dir     = Path(tempfile.gettempdir());
+        
+        # copy service
+        
+        service_path = Path(sys.argv[0]).resolve();
+        dest_path    = temp_dir / service_path.name;
+        shutil.copy2(service_path, dest_path);
+
+        # create "UPDATE_FILE" file
+        
+        upd_file_path = temp_dir / UPDATE_FILE_NAME;
+        write_json(upd_file_path, update);
+        
+        return dest_path;
+
+    def update_check(self):
+        log("update_check");
+    
+        if (not is_update_mode()):
+            ret, update = get_update(self.service_name);
+            
+            log(f"after get_update, ret={ret}, update={update}");
+            
+            if (ret > 0):
+                log("ret > 0");
+            
+                dest_path = self.prepare_update(update);
+                log(f"dest_path: {dest_path}");
+                run_exe(dest_path);
+                log("run_exe");
+                self.shutdown();
 
     # runner 
     
@@ -271,7 +330,18 @@ class StoicGuardian(win32serviceutil.ServiceFramework):
                 if (sid in self.active_sessions):
                     self.start_runner(sid);
 
+
+
     # ...
+
+    def shutdown(self):
+        # signal scm
+        self.ReportServiceStatus(
+            win32service.SERVICE_STOP_PENDING
+        )        
+        win32event.SetEvent(self.hWaitStop)
+
+        raise ServiceShutdown()
 
     def GetAcceptedControls(self):
         # STOP | SHUTDOWN | PAUSE -> STOP | SHUTDOWN | PAUSE | SESSIONCHANGE
@@ -303,6 +373,8 @@ class StoicGuardian(win32serviceutil.ServiceFramework):
         '''
         # disabling event viewer logs ; if the event viewer service is disabled, this service won't be running
         
+        log("SvcDoRun");
+        
         while True:
             
             self.guardian();
@@ -315,100 +387,48 @@ class StoicGuardian(win32serviceutil.ServiceFramework):
             if (result == win32event.WAIT_OBJECT_0):
                 break;
 
+# ...
+
+def start_service(service_name):
+    subprocess.run(
+        ["sc", "start", service_name],
+        shell=True
+    );
 
 def get_service_path():
     return Path(sys.argv[0]).resolve();
 
-def install_temp_service(binPath):
-    temp_service_name = 'StoicGuardianTemp_' + secrets.token_hex(4);
-    
-    subprocess.run(
-        f'sc create {temp_service_name} binPath="{binPath}" start=auto obj= LocalSystem',
-        shell=True
-    );
-    
-    return temp_service_name;
+def run_exe(path):
+    subprocess.Popen(path);
 
-def run_service(service_name):
-    subprocess.run(
-        f'sc start {service_name}',
-        shell=True
-    );
-    
+# ...
 
-def mark_on_resume():
-    subprocess.run(
-        f'setx {ON_RESUME_ENV} 1',
-        shell=True
-    );
-    
-    root_path = get_service_path().parent;
-    
-    subprocess.run(
-        f'setx {STOIC_ROOT_PATH_ENV} "{root_path}"',
-        shell=True
-    );
+def update_stub():
+    if (is_update_mode()):
+        update = None;
+        
+        try:
+            ret, update = update();
+        except:
+            pass;
+        
+        if (update is None):
+            exit(-1)
+        
+        start_service(update["service_name"]);
+        
+        exit(0);
 
-def unmark_on_resume():
-    subprocess.run(
-        f'setx {ON_RESUME_ENV} 0',
-        shell=True
-    );
-
-
-def delete_service(service_name):
-    subprocess.run(
-        f'sc delete {service_name}',
-        shell=True
-    );
-
-def copy_service_to_temp():
-    temp_dir     = Path(tempfile.gettempdir());
-    service_path = Path(sys.argv[0]).resolve();
-    dest_path    = temp_dir / service_path.name;
-    
-    shutil.copy2(service_path, dest_path);
-    
-    #log(f"temp_dir: {temp_dir}");
-    #log(f"service_path: {service_path}");
-    #log(f"dest_path: {dest_path}");
-    
-    return dest_path;
-
-def is_temp_service():
-    if (os.getenv(ON_RESUME_ENV) == "1"):
-        return True;
-    return False;
 
 
 if __name__ == "__main__":
-    if (not is_temp_service()):
-        # ran as resume
-    
-        binPath      = copy_service_to_temp();
-        service_name = install_temp_service(binPath);
-        
-        mark_on_resume();
-        
-        run_service(service_name);
-        delete_service(service_name);
-        
-        exit(0);
-
-    # not ran as resume
-
-    unmark_on_resume();
-    updated = stoic_updater();
-    
-    if (updated):
-        reboot();
-        exit(0);
-    
     # capturing errors so that debugging is not hell
 
     sys.excepthook       = exception_hook;
     threading.excepthook = thread_hook;
     faulthandler.enable(open(LOG_PATH, "a", encoding="utf-8"));
+    
+    update_stub();
     
     log("start");
     
