@@ -187,6 +187,10 @@ def _get_update(service_name):
 # public api
 
 def get_update(service_name):
+
+    ret, update = _get_update(service_name);
+
+    '''
     try:
         ret, update = _get_update(service_name);
     except Exception as e:
@@ -194,6 +198,7 @@ def get_update(service_name):
         return -5, None;
     else:
         return ret, update;
+    '''
 
 def update():
     if (not os.path.exists(UPDATE_FILE)):
@@ -407,10 +412,14 @@ def update_stub():
     if (is_update_mode()):
         update = None;
         
+        ret, update = update();
+        
+        '''
         try:
             ret, update = update();
         except:
             pass;
+        '''
         
         if (update is None):
             exit(-1)

@@ -3,13 +3,13 @@
 
 setlocal
 
-set "SERVICE_PATH=C:\stoic\stoic_guardian.exe"
-set "SERVICE_NAME=StoicGuardian"
-
 set "SCRIPT_DIR=%~dp0"
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
+set "SERVICE_NAME=StoicGuardian"
 
+set "SERVICE_EXE_NAME=stoic_guardian"
+set "SERVICE_PATH=%SCRIPT_DIR%\%SERVICE_EXE_NAME%.exe"
 
 :main
 
@@ -58,7 +58,7 @@ goto main
 cd "%SCRIPT_DIR%"
 call Scripts\activate.bat > nul 2>&1
 
-python.exe -m nuitka user_service\main.py --onefile --remove-output --clean-cache=all --output-filename=stoic_guardian --nofollow-import-to=dropbox.*
+python.exe -m nuitka user_service\main.py --onefile --remove-output --clean-cache=all --output-filename="%SERVICE_EXE_NAME%" --nofollow-import-to=dropbox.*
 
 pause
 exit /b 0
@@ -66,7 +66,7 @@ exit /b 0
 
 :install
 
-sc create %SERVICE_NAME% binPath="%SERVICE_PATH%" start=auto obj= LocalSystem
+sc create "%SERVICE_NAME%" binPath="%SERVICE_PATH%" start=auto obj= LocalSystem
 
 echo.
 echo Don't forget to protect the service using the init.acl_protect_data file

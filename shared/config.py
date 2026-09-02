@@ -51,6 +51,7 @@ USER_JSON_COLD_START = {
 def PATH(*args):
     return os.path.join(*args);
 
+# called in this file and user_service.main
 
 # getting root path
 
@@ -64,15 +65,18 @@ else:
     ROOT_PATH = Path(__file__).resolve().parent.parent;
 
 
-# folders 
+# folders
 
 DB_PATH           = PATH(ROOT_PATH, "db");
-UPDATES_CACHE_DIR = PATH(ROOT_PATH, "temp", "updates_cache");
 SCREENSHOTS_PATH  = PATH(DB_PATH, "screenshots");
+UPDATES_CACHE_DIR = PATH(ROOT_PATH, "temp", "updates_cache");
 
 # ...
 
 PENDING_UPDATE_FILE = PATH(ROOT_PATH, "temp", "pending_update.json");
+
+UPDATE_FILE_NAME    = "stoic_update.json";
+UPDATE_FILE         = PATH(ROOT_PATH, UPDATE_FILE_NAME);
 
 # json paths
 
