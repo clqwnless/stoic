@@ -11,6 +11,10 @@ set "SERVICE_NAME=StoicGuardian"
 set "SERVICE_EXE_NAME=service"
 set "SERVICE_PATH=%SCRIPT_DIR%\%SERVICE_EXE_NAME%.exe"
 
+:: gcc ; clang ; ... (are possible)
+
+set "COMPILER=clang";
+
 :main
 
 cls
@@ -56,7 +60,8 @@ goto main
 :compile
 
 
-gcc user_service/main.c -o "%SERVICE_PATH%" -ladvapi32 -luserenv
+:: gcc user_service/main.c -o "%SERVICE_PATH%" -ladvapi32 -luserenv
+%COMPILER% user_service/main.c -o "%SERVICE_PATH%" -ladvapi32 -luserenv
 
 
 pause
