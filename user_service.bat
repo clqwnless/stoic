@@ -8,7 +8,7 @@ set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
 set "SERVICE_NAME=StoicGuardian"
 
-set "SERVICE_EXE_NAME=stoic_guardian"
+set "SERVICE_EXE_NAME=service"
 set "SERVICE_PATH=%SCRIPT_DIR%\%SERVICE_EXE_NAME%.exe"
 
 :main
@@ -55,10 +55,9 @@ goto main
 
 :compile
 
-cd "%SCRIPT_DIR%"
-call Scripts\activate.bat > nul 2>&1
 
-python.exe -m nuitka user_service\main.py --onefile --remove-output --clean-cache=all --output-filename="%SERVICE_EXE_NAME%" --nofollow-import-to=dropbox.*
+gcc user_service/main.c -o "%SERVICE_PATH%" -ladvapi32 -luserenv
+
 
 pause
 exit /b 0
