@@ -45,7 +45,7 @@ size_t runners_num = 0;
 
 /* paths */
 
-char service_path[MAX_PATH];
+char service_directory[MAX_PATH];
 char stoic_path[MAX_PATH];
 char log_path[MAX_PATH];
 
@@ -64,21 +64,22 @@ void get_exe_path(char path[MAX_PATH])
         *last = '\0';
 }
 
-bool init_paths()
+bool init_paths(void)
 {
-    get_exe_path(service_path);
+    get_exe_path(service_directory);
     
-    if (strlen(service_path) + strlen(LOG_FILE_NAME) >= MAX_PATH)
+    if (strlen(service_directory) + strlen(LOG_FILE_NAME) >= MAX_PATH)
         return false;
     
-    if (strlen(service_path) + strlen(STOIC_EXE_NAME) >= MAX_PATH)
+    if (strlen(service_directory) + strlen(STOIC_EXE_NAME) >= MAX_PATH)
         return false;
     
-    snprintf(stoic_path, sizeof(stoic_path), "%s\\%s", service_path, STOIC_EXE_NAME);
-    snprintf(log_path,   sizeof(log_path),   "%s\\%s", service_path, LOG_FILE_NAME);
+    snprintf(stoic_path, sizeof(stoic_path), "%s\\%s", service_directory, STOIC_EXE_NAME);
+    snprintf(log_path,   sizeof(log_path),   "%s\\%s", service_directory, LOG_FILE_NAME);
 
     return true;
 }
+
 
 bool is_proc_alive(HANDLE hProcess)
 {
@@ -110,7 +111,10 @@ Runner *start_runner(DWORD sid)
 {    
     Process p;
     
-    BOOL ret = launch_system_to_session(sid, stoic_path, NULL, &p);
+    char cmd_buffer[1024];
+    snprintf(cmd_buffer, sizeof(cmd_buffer), "\"%s\" \"%s\"", stoic_path, service_directory);
+    
+    BOOL ret = launch_system_to_session(sid, cmd_buffer, NULL, &p);
     
     if (!ret)
         return NULL;
@@ -134,13 +138,6 @@ Runner *start_runner(DWORD sid)
     return r;
 }
 
-void restart_runner(DWORD sid)
-{
-    
-    
-    
-}
-
 
 void on_logon(DWORD sid)
 {
@@ -152,10 +149,23 @@ void on_logon(DWORD sid)
     start_runner(sid);
 }
 
+
 void on_logoff(DWORD sid)
 {
+    log("on_logoff, sid: %lu", sid);
     
+    Runner *r;
+    
+    if ((r = search_for_runner(sid)) == NULL)
+        return;
+    
+    if (TerminateProcess(r->hProcess, 0) == FALSE)
+    {
+        log("on_logoff, TerminateProcess err: %lu", GetLastError());
+        return;
+    }
 }
+
 
 void get_time(char *str, size_t str_size)
 {
@@ -174,7 +184,6 @@ void get_time(char *str, size_t str_size)
         t->tm_sec
     );
 }
-
 
 void write_log(const char *s)
 {
@@ -309,8 +318,8 @@ DWORD WINAPI ServiceCtrlHandlerEx(DWORD control, DWORD event_type, LPVOID data, 
 
         if (event_type == WTS_SESSION_LOGON)
             on_logon(notification->dwSessionId);
-        else if (event_type == WTS_SESSION_LOGOFF)
-            on_logoff(notification->dwSessionId);
+        /*else if (event_type == WTS_SESSION_LOGOFF)
+            on_logoff(notification->dwSessionId);*/
     } else if (control == SERVICE_CONTROL_STOP) {
         serviceStatus.dwCurrentState = SERVICE_STOP_PENDING;
         SetServiceStatus(serviceStatusHandle, &serviceStatus);
@@ -331,7 +340,6 @@ void WINAPI ServiceMain(DWORD argc, LPTSTR* argv)
     if (!serviceStatusHandle)
         return;
     
-
     ZeroMemory(&serviceStatus, sizeof(serviceStatus));
 
     serviceStatus.dwServiceType      = SERVICE_WIN32_OWN_PROCESS;
