@@ -25,7 +25,7 @@ echo  - [2] Delete
 echo  - [3] Stop
 echo  - [4] Start
 echo  - [5] Install in SafeMode (so that the service can't be bypassed)
-echo  - [6] Reset env values
+echo  - [6] Delete Environment Variables (cleanup)
 echo.
 
 set "choice="
@@ -48,7 +48,7 @@ if %choice% equ 0 (
 ) else if %choice% equ 5 (
 	call :install_in_safe_mode
 ) else if %choice% equ 6 (
-    call :reset_env_values
+    call :delete_env_values
 ) else if /i "%choice%" == "x" (
     exit /b 0
 )
@@ -116,10 +116,10 @@ reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\%S
 pause
 exit /b 0
 
-:reset_env_values
+:delete_env_values
 
-echo Resetting STOIC_GUARDIAN_ON_RESUME
-setx STOIC_GUARDIAN_ON_RESUME 0
+echo Deleting STOIC_ROOT_PATH
+reg delete "HKCU\Environment" /v "STOIC_ROOT_PATH" /f
 
 pause
 exit /b 0
