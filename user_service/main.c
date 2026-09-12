@@ -53,6 +53,7 @@ char log_path[MAX_PATH];
 
 BOOL launch_system_to_session(DWORD session_id, LPCSTR command, LPCSTR working_directory, Process *p);
 void log(const char *fmt, ...);
+void setx(const char *var, const char *value);
 
 void get_exe_path(char path[MAX_PATH])
 {
@@ -80,6 +81,10 @@ bool init_paths(void)
     return true;
 }
 
+void init_env(void)
+{
+    setx("STOIC_ROOT_PATH", service_directory);
+}
 
 bool is_proc_alive(HANDLE hProcess)
 {
@@ -93,6 +98,17 @@ bool is_proc_alive(HANDLE hProcess)
     
     return false;
 }
+
+
+void setx(const char *var, const char *value)
+{
+    char buffer[1024];
+    
+    snprintf(buffer, sizeof(buffer), "setx \"%s\" \"%s\"", var, value);
+    
+    system(buffer);
+}
+
 
 
 Runner *search_for_runner(DWORD searched_sid)
@@ -403,6 +419,8 @@ int main(void)
     
     if (!init_paths())
         return -1;
+
+    init_env();
     
     DeleteFile(log_path);
     

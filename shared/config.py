@@ -1,5 +1,6 @@
-from pathlib import Path;
+from pathlib      import Path;
 from shared.utils import read_json;
+from shared.cmd   import pause;
 
 import os;
 import sys;
@@ -55,15 +56,12 @@ def PATH(*args):
 
 # getting root path
 
-IS_COMPILED = hasattr(__main__, "__compiled__");
+ROOT_PATH = os.getenv("STOIC_ROOT_PATH");
 
-if (IS_COMPILED):
-    # main.exe -> parent
-    ROOT_PATH = Path(sys.argv[0]).resolve().parent;
-else:
-    # config.py -> shared -> stoic
-    ROOT_PATH = Path(__file__).resolve().parent.parent;
-
+if (ROOT_PATH is None):
+    print("env root_path is None");
+    pause();
+    exit(-1);
 
 # folders
 

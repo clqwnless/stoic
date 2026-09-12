@@ -4,7 +4,6 @@ from shared.config import (
     ROOT_PATH,
     EXTENSIONS_JSON,
     DEVICE_ID,
-    IS_COMPILED,
     SLEEP_TIMES,
     DISABLE_WHITELIST_ENFORCER
 );
