@@ -95,6 +95,9 @@ def _run_procmon(allowed_procs: list[str]):
 # main runners
 
 def run_procmon_no_check(allowed_procs: list[str]):
+    if is_procmon_alive():
+        kill_procmon();
+    
     _run_procmon(allowed_procs);
 
 def run_procmon(allowed_procs: list[str]):
