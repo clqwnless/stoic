@@ -1,5 +1,6 @@
 from shared.time_utils import get_current_time, get_current_time_str, is_time_in_range, get_local_hour_minute;
 
+
 SLEEP_INTERVAL = 1;
 
 

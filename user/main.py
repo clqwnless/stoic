@@ -418,7 +418,6 @@ def processes_info_page():
     print(f" - whitelist_enforcer:   alive={watchdog.whitelist_enforcer.is_alive() if watchdog.whitelist_enforcer else False}");
     print(f" - sleep_times_enforcer: alive={watchdog.sleep_times_enforcer.is_alive() if watchdog.sleep_times_enforcer else False}");
     print(f" - recorder:             alive={watchdog.recorder.is_alive() if watchdog.recorder else False}\n");
-    
 
     pause();
 
