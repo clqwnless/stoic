@@ -98,7 +98,6 @@ def kill_proc(pid):
     except:
         return;
 
-
 def is_nt_system(user_name):
     if (user_name == "NT AUTHORITY\\SYSTEM"):
         return True;

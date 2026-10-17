@@ -114,4 +114,9 @@ SCREENSHOT_DELAY_INTERVAL = USER_DATA["screenshot_delay_interval"];
 
 # sleep times
 
+# like: 15:00-17:00
+
 SLEEP_TIMES   = USER_DATA["sleep_times"];
+
+MON_EXE_PATH = "mon.exe";
+
