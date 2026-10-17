@@ -33,6 +33,20 @@ import sys;
 import secrets;
 import traceback;
 
+from user.mon_runner import (
+    run_procmon,
+    run_sleepmon,
+    run_screenmon,
+    
+    is_procmon_alive,
+    is_screenmon_alive,
+    is_sleepmon_alive,
+    
+    emergency_exit,
+    
+    start_watch_procs_thread
+);
+
 
 # GLOBAL VARIABLES
 
@@ -128,18 +142,8 @@ def run_extension(ext):
         pass;
 
 def on_exit():
-    if (watchdog.whitelist_enforcer is not None):
-        watchdog.whitelist_enforcer.terminate();
-    
-    if (watchdog.recorder is not None):
-        watchdog.recorder.terminate();
-    
-    if (watchdog.sleep_times_enforcer is not None):
-        watchdog.sleep_times_enforcer.terminate();
-    
     write_json(LOCAL_JSON, local);
-
-
+    emergency_exit();
 
 # data
 
@@ -367,8 +371,8 @@ def execute_page():
     
     # enabling watchdog
     
-    watchdog.wd_whitelist_enforcer(allowed_proc=allowed_proc);
-    
+    run_procmon(allowed_proc);
+
     while True:
         if (not sleep_control()):
             return;
@@ -415,9 +419,9 @@ def processes_info_page():
     # since I don't want to implement shared space between sleep_times_enforcer and current process (main) now
     # and "exit" in main won't work if whitelist_enforcer was runned by sleep_times_enforcer since it is still running
     
-    print(f" - whitelist_enforcer:   alive={watchdog.whitelist_enforcer.is_alive() if watchdog.whitelist_enforcer else False}");
-    print(f" - sleep_times_enforcer: alive={watchdog.sleep_times_enforcer.is_alive() if watchdog.sleep_times_enforcer else False}");
-    print(f" - recorder:             alive={watchdog.recorder.is_alive() if watchdog.recorder else False}\n");
+    print(f" - procmon:   alive={is_procmon_alive()}");
+    print(f" - sleepmon:  alive={is_sleepmon_alive()}");
+    print(f" - screenmon: alive={is_screenmon_alive()}\n");
 
     pause();
 
@@ -583,7 +587,7 @@ def view_blocks():
     pause();
 
 def ext_page(ext):
-    watchdog.wd_whitelist_enforcer(allowed_proc=ext["user_allowed_proc"]);
+    run_procmon(ext["user_allowed_proc"]);
 
     while True:
         # rendering
@@ -632,17 +636,17 @@ def extensions_page():
         
         if (index is not None and 0 <= index < len(extensions)):
             ext_page(extensions[index]);
-            watchdog.wd_whitelist_enforcer(allowed_proc=[]);
+            run_procmon([]);
 
 
 # main
 
 def main():
-    watchdog.wd_whitelist_enforcer(allowed_proc=[]);
-    watchdog.wd_recorder();
+    run_screenmon();
+    run_procmon([]);
+    run_sleepmon(SLEEP_TIMES);
     
-    if (bool(SLEEP_TIMES)):
-        watchdog.wd_sleep_times_enforcer(SLEEP_TIMES);
+    start_watch_procs_thread();
     
     while True:
         cls();
@@ -675,7 +679,7 @@ def main():
             
             # after exit from executer
             
-            watchdog.wd_whitelist_enforcer(allowed_proc=[]);
+            run_procmon([]);
         elif (opt == "3"):
             processes_info_page();
         elif (opt == "4"):
@@ -716,3 +720,5 @@ if __name__ == "__main__":
             traceback.print_exc();
             print();
             pause();
+
+
