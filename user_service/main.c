@@ -32,6 +32,7 @@ typedef struct {
 typedef struct {
     JobObject job;
     DWORD     sid;
+    BOOL      session_active;
 } Runner;
 
 typedef struct {
@@ -468,15 +469,13 @@ Runner *search_for_runner(DWORD searched_sid)
 
 
 
-Runner *start_runner(DWORD sid)
+Runner *start_runner(Runner *r, DWORD sid)
 {
     JobObject job;
     
     wchar_t command[1024];   
     swprintf(command, ARRAY_SIZE(command), L"\"%s\"", stoic_path);
     
-    logW(L"stoic_path: %ls, command: %ls\n", stoic_path, command);
-
     BOOL ret = start_in_job_as_system(sid, command, service_directory, &job);
 
     if (!ret)
@@ -490,13 +489,6 @@ Runner *start_runner(DWORD sid)
     {
         log("err: the amount of runners is more than: %llu\n", MAX_RUNNERS);
         return NULL;
-    }
-    
-    Runner *r = search_for_runner(sid);;
-    
-    if (r == NULL)
-    {
-        r = &runners[runners_num++];
     }
     
     log("info: started a new instance of a runner with sid: %d, pid: %d\n", sid, job.pid);
@@ -533,27 +525,35 @@ void on_logon(DWORD sid)
 {
     log("on_logon, sid: %lu", sid);
     
-    if (search_for_runner(sid) != NULL)
-        return;
+    Runner *r = search_for_runner(sid);
     
-    start_runner(sid);
+    if (r == NULL)
+    {
+        r = &runners[runners_num++];
+        r->session_active = TRUE;
+        
+        start_runner(r, sid);
+    }
 }
 
 void on_logoff(DWORD sid)
 {
     log("on_logoff, sid: %lu", sid);
     
-    Runner *r;
+    Runner *r = search_for_runner(sid);
     
-    if ((r = search_for_runner(sid)) == NULL)
+    if (r == NULL)
         return;
     
-    BOOL ret = terminate_job(&r->job);
+    BOOL ret  = terminate_job(&r->job);
+    DWORD err = GetLastError();
     
-    if (!ret)
+    if (!ret && err != ERROR_ACCESS_DENIED)
     {
-        log("terminate_job err: %d\n", GetLastError());
-    }    
+        log("terminate_job err: " HEX_ERR_SPECIFIER "\n", GetLastError());
+    }
+    
+    r->session_active = FALSE;
 }
 
 
@@ -685,10 +685,10 @@ DWORD WINAPI WorkerThread(LPVOID param)
         {
             Runner *r = &runners[i];
             
-            if (is_proc_alive(r->job.hProcess) == false)
+            if (r->session_active == TRUE && is_proc_alive(r->job.hProcess) == FALSE)
             {
                 terminate_job(&r->job);
-                start_runner(r->sid);
+                start_runner(r, r->sid);
             }
         }
     }
@@ -704,8 +704,8 @@ DWORD WINAPI ServiceCtrlHandlerEx(DWORD control, DWORD event_type, LPVOID data, 
 
         if (event_type == WTS_SESSION_LOGON)
             on_logon(notification->dwSessionId);
-        /*else if (event_type == WTS_SESSION_LOGOFF)
-            on_logoff(notification->dwSessionId);*/
+        else if (event_type == WTS_SESSION_LOGOFF)
+            on_logoff(notification->dwSessionId);
     } else if (control == SERVICE_CONTROL_STOP) {
         serviceStatus.dwCurrentState = SERVICE_STOP_PENDING;
         SetServiceStatus(serviceStatusHandle, &serviceStatus);
@@ -795,6 +795,7 @@ int main(void)
     DeleteFileW(log_path);
     
     log("paths initalized");
+    log("WTS_SESSION_LOGON val: %d, WTS_SESSION_LOGOFF val: %d\n", WTS_SESSION_LOGON, WTS_SESSION_LOGOFF);
     
     SERVICE_TABLE_ENTRYA serviceTable[] =
     {
