@@ -30,6 +30,11 @@ typedef struct {
     DWORD  tid;
 } Process;
 
+typedef struct {
+    HANDLE hJob;
+    HANDLE hProcess;
+    DWORD  pid;
+} JobObject;
 
 /* global variables */
 
@@ -57,25 +62,45 @@ void log(const char *fmt, ...);
 void setx(const char *var, const char *value);
 
 
-typedef struct JobObject JobObject;
 
 
-struct JobObject {
-    HANDLE hJob;
-    HANDLE hProcess;
-    DWORD  processId;
-};
+
+void set_token_session_id(HANDLE token_handle, DWORD session_id)
+{
+    if (!SetTokenInformation(token_handle, TokenSessionId, &session_id, sizeof(session_id)))
+        printf("SetTokenInformation failed: %lu\n", GetLastError());
+}
+
+BOOL set_token_to_system(DWORD sid, HANDLE token)
+{
+    HANDLE current_token;
+
+    // returns a handle to the exisiting token of the process
+    
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &current_token))
+        return FALSE;
+
+    if (!DuplicateTokenEx(current_token, TOKEN_ALL_ACCESS, NULL, SecurityImpersonation, TokenPrimary, &token))
+    {
+        CloseHandle(current_token);
+        return FALSE;
+    }
+
+    CloseHandle(current_token);
+
+    set_token_session_id(token, sid);
+}
 
 
-BOOL StartInJob(LPCWSTR applicationPath, LPWSTR commandLine, JobObject *result) {
+BOOL start_in_job(LPCWSTR applicationPath, LPWSTR commandLine, JobObject *result) {
     if (!applicationPath || !commandLine || !result) {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
     }
 
-    result->hJob      = NULL;
-    result->hProcess  = NULL;
-    result->processId = 0;
+    result->hJob     = NULL;
+    result->hProcess = NULL;
+    result->pid      = 0;
 
     HANDLE hJob = CreateJobObjectW(NULL, NULL);
     if (!hJob)
@@ -152,9 +177,174 @@ BOOL StartInJob(LPCWSTR applicationPath, LPWSTR commandLine, JobObject *result) 
 
     CloseHandle(pi.hThread);
 
-    result->hJob = hJob;
+    result->hJob     = hJob;
     result->hProcess = pi.hProcess;
-    result->processId = pi.dwProcessId;
+    result->pid      = pi.dwProcessId;
+
+    return TRUE;
+}
+
+
+BOOL start_as_system_in_job(
+    DWORD sid,
+    LPWSTR command,
+    LPCWSTR working_directory,
+    JobObject *job
+) {
+    HANDLE hJob  = NULL;
+    HANDLE token = NULL;
+
+    STARTUPINFOW si        = {0};
+    PROCESS_INFORMATION pi = {0};
+
+    LPVOID env = NULL; // the environment with %PATH% vars, etc ...
+
+    BOOL ret    = FALSE;
+    
+    /* creating a new token in order to run as system */
+    
+    set_token_to_system(sid, token);
+    
+    if (!CreateEnvironmentBlock(&env, token, FALSE))
+        goto cleanup;
+    
+    if (!command || !working_directory || !job) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        goto cleanup;
+    }
+
+    job->hJob     = NULL;
+    job->hProcess = NULL;
+    job->pid      = 0;
+
+    /* creating job object */
+    
+    hJob = CreateJobObjectW(NULL, NULL);
+    if (!hJob)
+        goto cleanup;
+
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = { 0 };
+
+    // kill all processes in a job object if the last handle is closed
+    
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+    if (!SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+        goto cleanup;
+
+    /* create the process itself */
+    
+    si.cb = sizeof(si);
+    si.lpDesktop = L"winsta0\\default";
+    
+    if (!CreateProcessAsUserW(
+        token,
+        NULL,
+        command,
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
+        env,
+        working_directory,
+        &si,
+        &pi
+    )) {
+        goto cleanup;
+    }
+    
+    // Add the process to the job object
+    
+    if (!AssignProcessToJobObject(hJob, pi.hProcess))
+        goto cleanup;
+    
+    // resume the thread
+    // (the thread was suspended so that it doesn't create new processes which aren't assigned to the job object)
+    
+    if (ResumeThread(pi.hThread) == (DWORD)-1)
+        goto cleanup;
+
+    CloseHandle(pi.hThread);
+
+    job->hJob     = hJob;
+    job->hProcess = pi.hProcess;
+    job->pid      = pi.dwProcessId;
+
+    return TRUE;
+        
+cleanup:
+    DWORD err = GetLastError();
+
+    if (token != NULL)
+        CloseHandle(token);
+    
+    if (hJob != NULL)
+        CloseHandle(hJob);
+    
+    if (pi.hProcess != NULL)
+    {
+        TerminateProcess(pi.hProcess, err);
+        WaitForSingleObject(pi.hProcess, INFINITE); // waiting process to be terminated
+        CloseHandle(pi.hProcess);
+    }
+    
+    if (pi.hThread != NULL)
+        CloseHandle(pi.hThread);
+    
+    if (env != NULL)
+        DestroyEnvironmentBlock(env);
+
+    SetLastError(err);
+
+    return ret;
+}
+
+
+BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p)
+{
+    HANDLE token;
+    LPVOID environment = NULL;
+
+    set_token_to_system(session_id, token);
+
+    if (!CreateEnvironmentBlock(&environment, token, FALSE))
+    {
+        CloseHandle(token);
+        return FALSE;
+    }
+
+    STARTUPINFOW startup = {0};
+    startup.cb = sizeof(startup);
+    startup.lpDesktop = L"winsta0\\default";
+
+    PROCESS_INFORMATION process_info = {0};
+
+    BOOL result = CreateProcessAsUserW(
+        token,
+        NULL,
+        command,
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
+        environment,
+        working_directory,
+        &startup,
+        &process_info
+    );
+
+    if (environment)
+        DestroyEnvironmentBlock(environment);
+
+    CloseHandle(token);
+
+    if (!result)
+        return FALSE;
+
+    p->hProcess = process_info.hProcess;
+    p->hThread  = process_info.hThread;
+    p->pid      = process_info.dwProcessId;
+    p->tid      = process_info.dwThreadId;
 
     return TRUE;
 }
@@ -341,75 +531,6 @@ void log(const char *fmt, ...)
     write_log(buffer);
 }
 
-
-
-void set_token_session_id(HANDLE token_handle, DWORD session_id)
-{
-    if (!SetTokenInformation(token_handle, TokenSessionId, &session_id, sizeof(session_id)))
-        printf("SetTokenInformation failed: %lu\n", GetLastError());
-}
-
-
-BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p)
-{
-    HANDLE current_token;
-    HANDLE token;
-    LPVOID environment = NULL;
-
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &current_token))
-        return FALSE;
-
-    if (!DuplicateTokenEx(current_token, TOKEN_ALL_ACCESS, NULL, SecurityImpersonation, TokenPrimary, &token))
-    {
-        CloseHandle(current_token);
-        return FALSE;
-    }
-
-    CloseHandle(current_token);
-
-    set_token_session_id(token, session_id);
-
-    if (!CreateEnvironmentBlock(&environment, token, FALSE))
-    {
-        CloseHandle(token);
-        return FALSE;
-    }
-
-    STARTUPINFOW startup = {0};
-    startup.cb = sizeof(startup);
-    startup.lpDesktop = L"winsta0\\default";
-
-    PROCESS_INFORMATION process_info = {0};
-
-    BOOL result = CreateProcessAsUserW(
-        token,
-        NULL,
-        command,
-        NULL,
-        NULL,
-        FALSE,
-        CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
-        environment,
-        working_directory,
-        &startup,
-        &process_info
-    );
-
-    if (environment)
-        DestroyEnvironmentBlock(environment);
-
-    CloseHandle(token);
-
-    if (!result)
-        return FALSE;
-
-    p->hProcess = process_info.hProcess;
-    p->hThread  = process_info.hThread;
-    p->pid      = process_info.dwProcessId;
-    p->tid      = process_info.dwThreadId;
-
-    return TRUE;
-}
 
 
 
