@@ -10,8 +10,10 @@
 
 #define MAX_RUNNERS 1024
 
-#define STOIC_EXE_NAME "stoic.exe"
-#define LOG_FILE_NAME  "stoic.log"
+#define STOIC_EXE_NAME L"stoic.exe"
+#define LOG_FILE_NAME  L"stoic.log"
+
+#define ARRAY_SIZE(arr) sizeof((arr)) / sizeof((arr)[0])
 
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "userenv.lib")
@@ -19,8 +21,15 @@
 /* structs */
 
 typedef struct {
-    DWORD  sid;
+    HANDLE hJob;
     HANDLE hProcess;
+    DWORD  pid;
+} JobObject;
+
+
+typedef struct {
+    JobObject job;
+    DWORD     sid;
 } Runner;
 
 typedef struct {
@@ -29,12 +38,6 @@ typedef struct {
     DWORD  pid;
     DWORD  tid;
 } Process;
-
-typedef struct {
-    HANDLE hJob;
-    HANDLE hProcess;
-    DWORD  pid;
-} JobObject;
 
 /* global variables */
 
@@ -51,19 +54,25 @@ size_t runners_num = 0;
 
 /* paths */
 
-char service_directory[MAX_PATH];
-char stoic_path[MAX_PATH];
-char log_path[MAX_PATH];
+wchar_t service_directory[MAX_PATH];
+wchar_t stoic_path[MAX_PATH];
+wchar_t log_path[MAX_PATH];
 
 /* prototypes */
 
 BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p);
 void log(const char *fmt, ...);
-void setx(const char *var, const char *value);
+void setx(const wchar_t *var, const wchar_t *value);
+
+BOOL start_in_job_as_system(
+    DWORD sid,
+    LPWSTR command,
+    LPCWSTR working_directory,
+    JobObject *job
+);
 
 
-
-
+/* token manipulation */
 
 void set_token_session_id(HANDLE token_handle, DWORD session_id)
 {
@@ -91,6 +100,7 @@ BOOL set_token_to_system(DWORD sid, HANDLE token)
     set_token_session_id(token, sid);
 }
 
+/* runners */
 
 BOOL start_in_job(LPCWSTR applicationPath, LPWSTR commandLine, JobObject *result) {
     if (!applicationPath || !commandLine || !result) {
@@ -184,8 +194,58 @@ BOOL start_in_job(LPCWSTR applicationPath, LPWSTR commandLine, JobObject *result
     return TRUE;
 }
 
+BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p)
+{
+    HANDLE token;
+    LPVOID environment = NULL;
 
-BOOL start_as_system_in_job(
+    set_token_to_system(session_id, token);
+
+    if (!CreateEnvironmentBlock(&environment, token, FALSE))
+    {
+        CloseHandle(token);
+        return FALSE;
+    }
+
+    STARTUPINFOW startup = {0};
+    startup.cb = sizeof(startup);
+    startup.lpDesktop = L"winsta0\\default";
+
+    PROCESS_INFORMATION process_info = {0};
+
+    BOOL result = CreateProcessAsUserW(
+        token,
+        NULL,
+        command,
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
+        environment,
+        working_directory,
+        &startup,
+        &process_info
+    );
+
+    if (environment)
+        DestroyEnvironmentBlock(environment);
+
+    CloseHandle(token);
+
+    if (!result)
+        return FALSE;
+
+    p->hProcess = process_info.hProcess;
+    p->hThread  = process_info.hThread;
+    p->pid      = process_info.dwProcessId;
+    p->tid      = process_info.dwThreadId;
+
+    return TRUE;
+}
+
+// main runner
+
+BOOL start_in_job_as_system(
     DWORD sid,
     LPWSTR command,
     LPCWSTR working_directory,
@@ -300,87 +360,51 @@ cleanup:
 }
 
 
-BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p)
+
+
+void setx(const wchar_t *var, const wchar_t *value)
 {
-    HANDLE token;
-    LPVOID environment = NULL;
-
-    set_token_to_system(session_id, token);
-
-    if (!CreateEnvironmentBlock(&environment, token, FALSE))
-    {
-        CloseHandle(token);
-        return FALSE;
-    }
-
-    STARTUPINFOW startup = {0};
-    startup.cb = sizeof(startup);
-    startup.lpDesktop = L"winsta0\\default";
-
-    PROCESS_INFORMATION process_info = {0};
-
-    BOOL result = CreateProcessAsUserW(
-        token,
-        NULL,
-        command,
-        NULL,
-        NULL,
-        FALSE,
-        CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
-        environment,
-        working_directory,
-        &startup,
-        &process_info
-    );
-
-    if (environment)
-        DestroyEnvironmentBlock(environment);
-
-    CloseHandle(token);
-
-    if (!result)
-        return FALSE;
-
-    p->hProcess = process_info.hProcess;
-    p->hThread  = process_info.hThread;
-    p->pid      = process_info.dwProcessId;
-    p->tid      = process_info.dwThreadId;
-
-    return TRUE;
+    wchar_t buffer[1024];
+    
+    swprintf(buffer, ARRAY_SIZE(buffer), L"setx \"%s\" \"%s\"", var, value);
+    
+    _wsystem(buffer);
 }
 
+/* init */
 
-
-void get_exe_path(char path[MAX_PATH])
+void get_exe_path(wchar_t path[MAX_PATH])
 {
-    GetModuleFileNameA(NULL, path, MAX_PATH);
+    GetModuleFileNameW(NULL, path, MAX_PATH);
     
-    char *last = strrchr(path, '\\');
+    wchar_t *last = wcsrchr(path, L'\\');
     
     if (last)
         *last = '\0';
 }
 
+void init_env(void)
+{
+    setx(L"STOIC_ROOT_PATH", service_directory);
+}
+
 bool init_paths(void)
 {
     get_exe_path(service_directory);
+
     
-    if (strlen(service_directory) + strlen(LOG_FILE_NAME) >= MAX_PATH)
+    if (wcslen(service_directory) + wcslen(LOG_FILE_NAME) >= MAX_PATH)
         return false;
     
-    if (strlen(service_directory) + strlen(STOIC_EXE_NAME) >= MAX_PATH)
+    if (wcslen(service_directory) + wcslen(STOIC_EXE_NAME) >= MAX_PATH)
         return false;
     
-    snprintf(stoic_path, sizeof(stoic_path), "%s\\%s", service_directory, STOIC_EXE_NAME);
-    snprintf(log_path,   sizeof(log_path),   "%s\\%s", service_directory, LOG_FILE_NAME);
+    swprintf(stoic_path, ARRAY_SIZE(stoic_path), L"%s\\%s", service_directory, STOIC_EXE_NAME);
+    swprintf(log_path,   ARRAY_SIZE(log_path),   L"%s\\%s", service_directory, LOG_FILE_NAME);
 
     return true;
 }
 
-void init_env(void)
-{
-    setx("STOIC_ROOT_PATH", service_directory);
-}
 
 bool is_proc_alive(HANDLE hProcess)
 {
@@ -396,14 +420,6 @@ bool is_proc_alive(HANDLE hProcess)
 }
 
 
-void setx(const char *var, const char *value)
-{
-    char buffer[1024];
-    
-    snprintf(buffer, sizeof(buffer), "setx \"%s\" \"%s\"", var, value);
-    
-    system(buffer);
-}
 
 
 
@@ -419,41 +435,65 @@ Runner *search_for_runner(DWORD searched_sid)
 }
 
 
-#define ARRAY_SIZE(arr) sizeof((arr)) / sizeof((arr)[0])
 
 
 Runner *start_runner(DWORD sid)
-{    
-    Process p;
+{
+    JobObject job;
     
-    wchar_t cmd_buffer[1024];
-    
+    wchar_t cmd_buffer[1024];   
     swprintf(cmd_buffer, ARRAY_SIZE(cmd_buffer), L"\"%s\"", stoic_path);
     
-    BOOL ret = launch_system_to_session(sid, cmd_buffer, NULL, &p);
-    
+
+    BOOL ret = start_in_job_as_system(sid, cmd_buffer, stoic_path, &job);
+
     if (!ret)
-        return NULL;
-    
-    CloseHandle(p.hThread);
-    
-    if (runners_num > MAX_RUNNERS)
-        return NULL;
-    
-    Runner *r;
-    
-    if ((r = search_for_runner(sid)) == NULL)
     {
-        r = &runners[runners_num];
-        runners_num++;
+        DWORD err = GetLastError();
+        log("err while starting a new instance of a runner: %lu\n", err);
+        return NULL;
     }
 
-    r->sid      = sid;
-    r->hProcess = p.hProcess;
+    if (runners_num >= MAX_RUNNERS)
+    {
+        log("err: the amount of runners is more than: %llu\n", MAX_RUNNERS);
+        return NULL;
+    }
     
+    Runner *r = search_for_runner(sid);;
+    
+    if (r == NULL)
+    {
+        r = &runners[runners_num++];
+    }
+    
+    r->job = job;
+    r->sid = sid;
+
     return r;
 }
 
+BOOL terminate_job(JobObject *job)
+{
+    BOOL ret  = TRUE;
+    DWORD err = ERROR_SUCCESS;
+    
+    if (!TerminateProcess(job->hProcess, 0))
+    {
+        err = GetLastError();
+        ret = FALSE;
+    }
+    
+    if (job->hProcess != NULL)
+        CloseHandle(job->hProcess);
+    
+    if (job->hJob != NULL)
+        CloseHandle(job->hJob);
+    
+    SetLastError(err);
+    
+    return ret;
+}
 
 void on_logon(DWORD sid)
 {
@@ -465,7 +505,6 @@ void on_logon(DWORD sid)
     start_runner(sid);
 }
 
-
 void on_logoff(DWORD sid)
 {
     log("on_logoff, sid: %lu", sid);
@@ -475,11 +514,12 @@ void on_logoff(DWORD sid)
     if ((r = search_for_runner(sid)) == NULL)
         return;
     
-    if (TerminateProcess(r->hProcess, 0) == FALSE)
+    BOOL ret = terminate_job(&r->job);
+    
+    if (!ret)
     {
-        log("on_logoff, TerminateProcess err: %lu", GetLastError());
-        return;
-    }
+        log("terminate_job err: %d\n", GetLastError());
+    }    
 }
 
 
@@ -503,7 +543,7 @@ void get_time(char *str, size_t str_size)
 
 void write_log(const char *s)
 {
-    FILE *f = fopen(log_path, "a");
+    FILE *f = _wfopen(log_path, L"a");
     
     if (!f)
         return;
@@ -547,8 +587,9 @@ DWORD WINAPI WorkerThread(LPVOID param)
         {
             Runner *r = &runners[i];
             
-            if (is_proc_alive(r->hProcess) == false)
+            if (is_proc_alive(r->job.hProcess) == false)
             {
+                terminate_job(&r->job);
                 start_runner(r->sid);
             }
         }
@@ -653,7 +694,7 @@ int main(void)
 
     init_env();
     
-    DeleteFile(log_path);
+    DeleteFileW(log_path);
     
     log("paths initalized");
     
