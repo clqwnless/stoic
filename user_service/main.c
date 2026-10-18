@@ -15,6 +15,8 @@
 
 #define ARRAY_SIZE(arr) sizeof((arr)) / sizeof((arr)[0])
 
+#define HEX_ERR_SPECIFIER "0x%08lX"
+
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "userenv.lib")
 
@@ -61,8 +63,11 @@ wchar_t log_path[MAX_PATH];
 /* prototypes */
 
 BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p);
-void log(const char *fmt, ...);
 void setx(const wchar_t *var, const wchar_t *value);
+
+void log(const char *fmt, ...);
+void logW(const wchar_t *fmt, ...);
+
 
 BOOL start_in_job_as_system(
     DWORD sid,
@@ -74,30 +79,53 @@ BOOL start_in_job_as_system(
 
 /* token manipulation */
 
-void set_token_session_id(HANDLE token_handle, DWORD session_id)
-{
-    if (!SetTokenInformation(token_handle, TokenSessionId, &session_id, sizeof(session_id)))
-        printf("SetTokenInformation failed: %lu\n", GetLastError());
-}
 
-BOOL set_token_to_system(DWORD sid, HANDLE token)
+BOOL set_token_to_system(DWORD sid, HANDLE *token)
 {
-    HANDLE current_token;
+    BOOL ret             = FALSE;
+    
+    HANDLE current_token = NULL;
+    HANDLE new_token     = NULL;
+
+    DWORD err = ERROR_SUCCESS;
+
+    if (!token)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    
+    *token = NULL;
 
     // returns a handle to the exisiting token of the process
     
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &current_token))
-        return FALSE;
+        goto cleanup;
 
-    if (!DuplicateTokenEx(current_token, TOKEN_ALL_ACCESS, NULL, SecurityImpersonation, TokenPrimary, &token))
-    {
-        CloseHandle(current_token);
-        return FALSE;
-    }
+    if (!DuplicateTokenEx(current_token, TOKEN_ALL_ACCESS, NULL, SecurityImpersonation, TokenPrimary, &new_token))
+        goto cleanup;
 
     CloseHandle(current_token);
 
-    set_token_session_id(token, sid);
+    /* change sid in the token */
+
+    if (!SetTokenInformation(new_token, TokenSessionId, &sid, sizeof(sid)))
+        goto cleanup;
+    
+    /* no errors */
+
+    *token = new_token;
+    ret = TRUE;
+
+cleanup:
+    err = GetLastError(); 
+    
+    if (current_token != NULL)
+        CloseHandle(current_token);
+    
+    SetLastError(err);
+
+    return ret;
 }
 
 /* runners */
@@ -199,7 +227,7 @@ BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_
     HANDLE token;
     LPVOID environment = NULL;
 
-    set_token_to_system(session_id, token);
+    set_token_to_system(session_id, &token);
 
     if (!CreateEnvironmentBlock(&environment, token, FALSE))
     {
@@ -259,11 +287,12 @@ BOOL start_in_job_as_system(
 
     LPVOID env = NULL; // the environment with %PATH% vars, etc ...
 
-    BOOL ret    = FALSE;
+    DWORD err = ERROR_SUCCESS;
+    BOOL ret  = FALSE;
     
     /* creating a new token in order to run as system */
     
-    set_token_to_system(sid, token);
+    set_token_to_system(sid, &token);
     
     if (!CreateEnvironmentBlock(&env, token, FALSE))
         goto cleanup;
@@ -324,6 +353,8 @@ BOOL start_in_job_as_system(
     if (ResumeThread(pi.hThread) == (DWORD)-1)
         goto cleanup;
 
+    CloseHandle(token);
+    DestroyEnvironmentBlock(env);
     CloseHandle(pi.hThread);
 
     job->hJob     = hJob;
@@ -331,9 +362,9 @@ BOOL start_in_job_as_system(
     job->pid      = pi.dwProcessId;
 
     return TRUE;
-        
+    
 cleanup:
-    DWORD err = GetLastError();
+    err = GetLastError();
 
     if (token != NULL)
         CloseHandle(token);
@@ -402,6 +433,7 @@ bool init_paths(void)
     swprintf(stoic_path, ARRAY_SIZE(stoic_path), L"%s\\%s", service_directory, STOIC_EXE_NAME);
     swprintf(log_path,   ARRAY_SIZE(log_path),   L"%s\\%s", service_directory, LOG_FILE_NAME);
 
+
     return true;
 }
 
@@ -436,21 +468,21 @@ Runner *search_for_runner(DWORD searched_sid)
 
 
 
-
 Runner *start_runner(DWORD sid)
 {
     JobObject job;
     
-    wchar_t cmd_buffer[1024];   
-    swprintf(cmd_buffer, ARRAY_SIZE(cmd_buffer), L"\"%s\"", stoic_path);
+    wchar_t command[1024];   
+    swprintf(command, ARRAY_SIZE(command), L"\"%s\"", stoic_path);
     
+    logW(L"stoic_path: %ls, command: %ls\n", stoic_path, command);
 
-    BOOL ret = start_in_job_as_system(sid, cmd_buffer, stoic_path, &job);
+    BOOL ret = start_in_job_as_system(sid, command, service_directory, &job);
 
     if (!ret)
     {
         DWORD err = GetLastError();
-        log("err while starting a new instance of a runner: %lu\n", err);
+        log("err while starting a new instance of a runner: " HEX_ERR_SPECIFIER "\n", err);
         return NULL;
     }
 
@@ -466,6 +498,8 @@ Runner *start_runner(DWORD sid)
     {
         r = &runners[runners_num++];
     }
+    
+    log("info: started a new instance of a runner with sid: %d, pid: %d\n", sid, job.pid);
     
     r->job = job;
     r->sid = sid;
@@ -557,6 +591,56 @@ void write_log(const char *s)
     fclose(f);
 }
 
+wchar_t *utf8_to_wide(const char *str)
+{
+    if (!str)
+        return NULL;
+    
+    int size = MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        str,
+        -1,
+        NULL,
+        0
+    );
+    
+    if (size == 0)
+        return NULL;
+    
+    wchar_t* result = malloc((size_t)size * sizeof(wchar_t));
+    
+    if (!result)
+        return NULL;
+    
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, str, -1, result, size) == 0)
+    {
+        free(result);
+        return NULL;
+    }
+
+    return result;
+}
+
+void write_logW(const wchar_t *s)
+{
+    FILE *f = _wfopen(log_path, L"a");
+    
+    if (!f)
+        return;
+    
+    char time_str[128];
+    
+    get_time(time_str, sizeof(time_str));
+    
+    wchar_t *wtime_str = utf8_to_wide(time_str);
+    
+    fwprintf(f, L"[%ls] %ls\n", wtime_str, s);
+    
+    fclose(f);
+}
+
+
 void log(const char *fmt, ...)
 {
     char buffer[1024];
@@ -569,6 +653,20 @@ void log(const char *fmt, ...)
     va_end(args);
     
     write_log(buffer);
+}
+
+void logW(const wchar_t *fmt, ...)
+{
+    wchar_t buffer[1024];
+    
+    va_list  args;
+    va_start(args, fmt);
+    
+    vsnwprintf(buffer, ARRAY_SIZE(buffer), fmt, args);
+    
+    va_end(args);
+    
+    write_logW(buffer);
 }
 
 
