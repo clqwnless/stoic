@@ -1,3 +1,4 @@
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <userenv.h>
 #include <stdio.h>
@@ -51,9 +52,114 @@ char log_path[MAX_PATH];
 
 /* prototypes */
 
-BOOL launch_system_to_session(DWORD session_id, LPCSTR command, LPCSTR working_directory, Process *p);
+BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p);
 void log(const char *fmt, ...);
 void setx(const char *var, const char *value);
+
+
+typedef struct JobObject JobObject;
+
+
+struct JobObject {
+    HANDLE hJob;
+    HANDLE hProcess;
+    DWORD  processId;
+};
+
+
+BOOL StartInJob(LPCWSTR applicationPath, LPWSTR commandLine, JobObject *result) {
+    if (!applicationPath || !commandLine || !result) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    result->hJob      = NULL;
+    result->hProcess  = NULL;
+    result->processId = 0;
+
+    HANDLE hJob = CreateJobObjectW(NULL, NULL);
+    if (!hJob)
+        return FALSE;
+
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = { 0 };
+
+    // kill all processes in a job object if the last handle is closed
+    
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+    if (!SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+        DWORD err = GetLastError();
+        
+        CloseHandle(hJob);
+        SetLastError(err);
+        
+        return FALSE;
+    }
+
+    STARTUPINFOW si  = { 0 };
+    PROCESS_INFORMATION pi = { 0 };
+    si.cb = sizeof(si);
+
+    // create process but don't allow code execution (suspend it after the creation)
+    if (!CreateProcessW(
+        applicationPath,
+        commandLine,
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_SUSPENDED,
+        NULL,
+        NULL,
+        &si,
+        &pi
+    )) {
+        DWORD err = GetLastError();
+        CloseHandle(hJob);
+        SetLastError(err);
+        return FALSE;
+    }
+
+    // Add process to the job object
+    if (!AssignProcessToJobObject(hJob, pi.hProcess)) {
+        DWORD err = GetLastError();
+
+        TerminateProcess(pi.hProcess, err);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        CloseHandle(hJob);
+
+        SetLastError(err);
+        return FALSE;
+    }
+
+    // the process can be now resumed (and create another processes which will automatically be assigned to the job object)
+    
+    if (ResumeThread(pi.hThread) == (DWORD)-1) {
+        DWORD err = GetLastError();
+
+        TerminateProcess(pi.hProcess, err);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        CloseHandle(hJob);
+
+        SetLastError(err);
+        return FALSE;
+    }
+
+    CloseHandle(pi.hThread);
+
+    result->hJob = hJob;
+    result->hProcess = pi.hProcess;
+    result->processId = pi.dwProcessId;
+
+    return TRUE;
+}
+
+
 
 void get_exe_path(char path[MAX_PATH])
 {
@@ -123,12 +229,16 @@ Runner *search_for_runner(DWORD searched_sid)
 }
 
 
+#define ARRAY_SIZE(arr) sizeof((arr)) / sizeof((arr)[0])
+
+
 Runner *start_runner(DWORD sid)
 {    
     Process p;
     
-    char cmd_buffer[1024];
-    snprintf(cmd_buffer, sizeof(cmd_buffer), "\"%s\" \"%s\"", stoic_path, service_directory);
+    wchar_t cmd_buffer[1024];
+    
+    swprintf(cmd_buffer, ARRAY_SIZE(cmd_buffer), L"\"%s\"", stoic_path);
     
     BOOL ret = launch_system_to_session(sid, cmd_buffer, NULL, &p);
     
@@ -240,7 +350,7 @@ void set_token_session_id(HANDLE token_handle, DWORD session_id)
 }
 
 
-BOOL launch_system_to_session(DWORD session_id, LPCSTR command, LPCSTR working_directory, Process *p)
+BOOL launch_system_to_session(DWORD session_id, LPWSTR command, LPCWSTR working_directory, Process *p)
 {
     HANDLE current_token;
     HANDLE token;
@@ -265,16 +375,16 @@ BOOL launch_system_to_session(DWORD session_id, LPCSTR command, LPCSTR working_d
         return FALSE;
     }
 
-    STARTUPINFOA startup = {0};
+    STARTUPINFOW startup = {0};
     startup.cb = sizeof(startup);
-    startup.lpDesktop = "winsta0\\default";
+    startup.lpDesktop = L"winsta0\\default";
 
     PROCESS_INFORMATION process_info = {0};
 
-    BOOL result = CreateProcessAsUserA(
+    BOOL result = CreateProcessAsUserW(
         token,
         NULL,
-        (LPSTR)command,
+        command,
         NULL,
         NULL,
         FALSE,
